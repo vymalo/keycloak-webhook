@@ -35,7 +35,7 @@ tasks.test {
 }
 
 kotlin {
-    jvmToolchain(12)
+    jvmToolchain(17)
 }
 
 val generatedSourcesDir = "$buildDir/generated/openapi"

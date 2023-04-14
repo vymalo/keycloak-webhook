@@ -55,4 +55,4 @@ jobs:
           prerelease: false
           allowUpdates: true
           bodyFile: CHANGELOG.md
-          tag: v1.0.0
+          tag: v0.1.0

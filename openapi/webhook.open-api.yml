@@ -1,0 +1,84 @@
+openapi: 3.0.3
+info:
+  title: Webhook OpenApi
+  description: |
+    Some existing API Server for sending POST message to help 
+    with authentication at [https://www.vymalo.com](https://www.vymalo.com)
+  termsOfService: https://blog.ssegning.com
+  contact:
+    email: dev@ssegning.com
+  license:
+    name: MIT
+  version: 0.1.0
+externalDocs:
+  description: Find out more about calling setting up an external service to verify phone number
+  url: https://blog.ssegning.com
+servers:
+  - url: http://localhost:8080
+    description: Dev server
+  - url: https://webhook-api-server:port
+    description: Production server
+tags:
+  - name: webhook
+    description: All about sending webhooks
+paths:
+  /webhook:
+    post:
+      tags:
+        - webhook
+      summary: Send a webhook
+      description: Send a webhook to the a server
+      operationId: sendWebhook
+      security:
+        - basic_auth: []
+        - api_auth: []
+        - bearer_auth: []
+      requestBody:
+        description: Webhook request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookRequest'
+        required: true
+      responses:
+        200:
+          description: "successful operation"
+
+components:
+  schemas:
+    WebhookRequest:
+      type: object
+      properties:
+        type:
+          $ref: '#/components/schemas/WebhookType'
+        id:
+          type: string
+        time:
+          type: number
+        clientId:
+          type: string
+        realmId:
+          type: string
+        userId:
+          type: string
+        ipAddress:
+          type: string
+        error:
+          type: string
+        details:
+          additionalProperties: true
+      required:
+        - type
+        - realmId
+    WebhookType:
+      type: string
+      description: |
+        I've just picked some types from `org.keycloak.events.EventType` plus some for admin types
+  securitySchemes:
+    basic_auth:
+      type: http
+      scheme: basic
+    bearer_auth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

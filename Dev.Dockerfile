@@ -2,7 +2,7 @@ ARG TAG=21.0.2
 
 FROM quay.io/keycloak/keycloak:${TAG}
 
-ENV WEBHOOK_PLUGIN_VERSION 0.1.0
+ENV WEBHOOK_PLUGIN_VERSION 0.2.0
 
 ENV KEYCLOAK_DIR /opt/keycloak
 ENV KC_PROXY edge

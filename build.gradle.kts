@@ -8,7 +8,11 @@ plugins {
 }
 
 group = "com.vymalo.keycloak.webhook"
-version = "0.1.0"
+version = "0.2.0"
+
+val gsonVersion = "2.10.1"
+val amqpVersion = "5.17.0"
+val okhttp3Version = "4.10.0"
 
 repositories {
     mavenCentral()
@@ -23,9 +27,9 @@ dependencies {
     implementation("org.keycloak", "keycloak-server-spi", "21.0.2")
     implementation("org.keycloak", "keycloak-server-spi-private", "21.0.2")
 
-    api("com.squareup.moshi", "moshi-kotlin", "1.13.0")
-    api("com.squareup.moshi", "moshi-adapters", "1.13.0")
-    api("com.squareup.okhttp3", "okhttp", "4.10.0")
+    api("com.squareup.okhttp3", "okhttp", okhttp3Version)
+    api("com.rabbitmq", "amqp-client", amqpVersion)
+    api("com.google.code.gson", "gson", gsonVersion)
 
     api("org.slf4j", "slf4j-log4j12", "1.7.36")
 }
@@ -56,7 +60,8 @@ openApiGenerate {
 
     configOptions.set(
         mutableMapOf(
-            "dateLibrary" to "java8"
+            "dateLibrary" to "java8",
+            "serializationLibrary" to "gson"
         )
     )
 }
@@ -78,9 +83,10 @@ tasks {
 
     val shadowJar by existing(ShadowJar::class) {
         dependencies {
-            include(dependency("com.squareup.moshi:.*"))
-            include(dependency("com.squareup.okhttp3:.*"))
-            include(dependency("org.jetbrains.kotlin:kotlin-reflect:.*"))
+            include(dependency("com.squareup.okhttp3:okhttp:$okhttp3Version"))
+            include(dependency("org.jetbrains.kotlin:kotlin-reflect:1.8.0"))
+            include(dependency("com.rabbitmq:amqp-client:$amqpVersion"))
+            include(dependency("com.google.code.gson:gson:$gsonVersion"))
         }
     }
 }

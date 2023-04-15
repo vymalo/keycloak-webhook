@@ -6,19 +6,52 @@ services:
       context: .
       dockerfile: Dev.Dockerfile
     ports:
-      - '9100:9100'
+      - '9200:9200'
     environment:
-      WEBHOOK_TAKE_EVENTS: "LOGIN,REGISTER,LOGOUT"
-      WEBHOOK_BASE_PATH: "https://localhost:3000"
-      WEBHOOK_AUTH_USERNAME: "admin"
-      WEBHOOK_AUTH_PASSWORD: "password"
+      # WEBHOOK_EVENTS_TAKEN: "LOGIN,REGISTER,LOGOUT"
+
+      WEBHOOK_HTTP_BASE_PATH: "http://watcher:3000/api"
+      WEBHOOK_HTTP_AUTH_USERNAME: "admin"
+      WEBHOOK_HTTP_AUTH_PASSWORD: "password"
+
+      WEBHOOK_AMQP_HOST: rabbitmq
+      WEBHOOK_AMQP_USERNAME: username
+      WEBHOOK_AMQP_PASSWORD: password
+      WEBHOOK_AMQP_PORT: 5672
+      WEBHOOK_AMQP_EXCHANGE: keycloak
+      WEBHOOK_AMQP_VHOST: "/"
 
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: password
       KEYCLOAK_FRONTEND_URL: http://localhost:9100/auth
+
       KC_HTTP_PORT: 9100
       KC_METRICS_ENABLED: 'true'
       KC_LOG_CONSOLE_COLOR: 'true'
       KC_HEALTH_ENABLED: 'true'
     command:
       - start-dev
+
+  rabbitmq:
+    image: docker.io/bitnami/rabbitmq
+    ports:
+      - '4369:4369'
+      - '5551:5551'
+      - '5552:5552'
+      - '5672:5672'
+      - '25672:25672'
+      - '15672:15672'
+    environment:
+      - RABBITMQ_USERNAME=username
+      - RABBITMQ_PASSWORD=password
+
+  watcher:
+    image: ssegning/api-watcher
+    ports:
+      - "3000:3000"
+    volumes:
+      - watcher_data:/app/data
+
+volumes:
+  watcher_data:
+

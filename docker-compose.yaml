@@ -47,6 +47,7 @@ services:
 
   watcher:
     image: ssegning/api-watcher:latest
+    platform: linux/amd64
     ports:
       - "3000:3000"
     volumes:

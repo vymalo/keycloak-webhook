@@ -1,6 +1,5 @@
 # Changelog
 
-## v0.2.0
+## v0.3.0
 
-- Added RabbitMQ client
-- Use Gson as Serialization lib for http
+- Upgraded to Keycloak 22.0.1

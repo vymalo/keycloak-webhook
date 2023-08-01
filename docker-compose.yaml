@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dev.Dockerfile
     ports:
-      - '9200:9200'
+      - '9100:9100'
     environment:
       # WEBHOOK_EVENTS_TAKEN: "LOGIN,REGISTER,LOGOUT"
 
@@ -46,7 +46,7 @@ services:
       - RABBITMQ_PASSWORD=password
 
   watcher:
-    image: ssegning/api-watcher
+    image: ssegning/api-watcher:latest
     ports:
       - "3000:3000"
     volumes:

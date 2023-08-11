@@ -20,3 +20,6 @@ This part is heavily inspired from the [keycloak-event-listener-rabbitmq](https:
 - `WEBHOOK_AMQP_VHOST (optional)` is the vhost of the rabbitmq server
 - `WEBHOOK_AMQP_EXCHANGE` is the exchange of the rabbitmq server
 - `WEBHOOK_AMQP_SSL (optional)` is to indicate if we're using SSL or not. Values are "yes" or "no"
+
+### Enable listener-webhook in Keycloak
+Go to Realm Settings -> Events -> Event listeners and add "listener-webhook" to the list.

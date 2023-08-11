@@ -18,8 +18,10 @@ class AmqpWebhookHandler(
     private val exchange: String
 
     companion object {
+        @JvmStatic
         private val gson = Gson()
 
+        @JvmStatic
         private fun getMessageProps(className: String): BasicProperties {
             val headers: MutableMap<String, Any> = HashMap()
             headers["__TypeId__"] = className
@@ -31,6 +33,7 @@ class AmqpWebhookHandler(
             return propsBuilder.build()
         }
 
+        @JvmStatic
         private fun genRoutingKey(request: WebhookRequest): String =
             "KC_CLIENT.${request.realmId}.${request.clientId ?: "xxx"}.${request.userId ?: "xxx"}.${request.type}"
     }

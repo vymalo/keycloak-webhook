@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory
 class WebhookEventListenerProviderFactory : EventListenerProviderFactory, ServerInfoAwareProviderFactory {
 
     companion object {
+        @JvmStatic
         private val LOG = LoggerFactory.getLogger(WebhookEventListenerProviderFactory::class.java)
 
         const val PROVIDER_ID = "listener-webhook"

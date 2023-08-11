@@ -13,6 +13,7 @@ class WebhookEventListenerProvider(
     private val takeList: Set<String>?
 ) : EventListenerProvider {
     companion object {
+        @JvmStatic
         private val LOG = LoggerFactory.getLogger(WebhookEventListenerProvider::class.java)
     }
 

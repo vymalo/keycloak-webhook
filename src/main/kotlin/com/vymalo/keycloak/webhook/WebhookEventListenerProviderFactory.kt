@@ -104,6 +104,6 @@ class WebhookEventListenerProviderFactory : EventListenerProviderFactory, Server
 
     override fun getId(): String = PROVIDER_ID
 
-    override fun getOperationalInfo() = mapOf("version" to "0.3.0")
+    override fun getOperationalInfo() = mapOf("version" to "0.4.0")
 
 }

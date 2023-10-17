@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "com.vymalo.keycloak.webhook"
-version = "0.3.0"
+version = "0.4.0"
 
 val gsonVersion = "2.10.1"
 val amqpVersion = "5.17.0"
@@ -27,9 +27,9 @@ dependencies {
 
     implementation(kotlin("stdlib"))
 
-    implementation("org.keycloak", "keycloak-services", "22.0.1")
-    implementation("org.keycloak", "keycloak-server-spi", "22.0.1")
-    implementation("org.keycloak", "keycloak-server-spi-private", "22.0.1")
+    implementation("org.keycloak", "keycloak-services", "22.0.4")
+    implementation("org.keycloak", "keycloak-server-spi", "22.0.4")
+    implementation("org.keycloak", "keycloak-server-spi-private", "22.0.4")
 
     api("com.squareup.okhttp3", "okhttp", okhttp3Version)
     api("com.rabbitmq", "amqp-client", amqpVersion)

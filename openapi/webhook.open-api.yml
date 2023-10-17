@@ -22,7 +22,7 @@ tags:
   - name: webhook
     description: All about sending webhooks
 paths:
-  /webhook:
+  /:
     post:
       tags:
         - webhook

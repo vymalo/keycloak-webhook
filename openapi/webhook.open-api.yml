@@ -67,6 +67,10 @@ components:
           type: string
         details:
           additionalProperties: true
+        resourcePath:
+          type: string
+        representation:
+          type: string
       required:
         - type
         - realmId

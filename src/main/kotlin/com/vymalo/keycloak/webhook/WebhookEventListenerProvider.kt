@@ -29,7 +29,9 @@ class WebhookEventListenerProvider(
         event.ipAddress,
         event.type.toString(),
         event.error,
-        event.details
+        event.details,
+        null,
+        null
     )
 
     override fun onEvent(event: AdminEvent, includeRepresentation: Boolean) = send(
@@ -42,6 +44,8 @@ class WebhookEventListenerProvider(
         "${event.resourceType}-${event.operationType}",
         event.error,
         null,
+        event.resourcePath,
+        event.representation
     )
 
     private fun send(
@@ -53,7 +57,9 @@ class WebhookEventListenerProvider(
         ipAddress: String?,
         type: String,
         error: String?,
-        details: Map<String, Any>?
+        details: Map<String, Any>?,
+        resourcePath: String?,
+        representation: String?,
     ) {
         if (takeList != null && type !in takeList) {
             LOG.debug("Event {} not in the taken list. Will be skipped ({}).", type, takeList)
@@ -70,6 +76,8 @@ class WebhookEventListenerProvider(
             type = type,
             details = details,
             error = error,
+            resourcePath = resourcePath,
+            representation = representation
         )
 
         handlers?.forEach {

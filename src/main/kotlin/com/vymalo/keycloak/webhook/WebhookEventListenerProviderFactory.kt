@@ -20,7 +20,7 @@ class WebhookEventListenerProviderFactory : EventListenerProviderFactory, Server
         @JvmStatic
         private val LOG = LoggerFactory.getLogger(WebhookEventListenerProviderFactory::class.java)
 
-        const val PROVIDER_ID = "listener-webhook-extended"
+        const val PROVIDER_ID = "listener-webhook"
     }
 
     private var clientConfig: ClientConfig = ClientConfig()

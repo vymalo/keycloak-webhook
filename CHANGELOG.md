@@ -1,6 +1,5 @@
 # Changelog
 
-## v0.4.0
+## v0.5.0
 
-- Upgraded to Keycloak 22.0.4
-- Changed base path for webhooks from `/webhook` to `/` 
+- Upgraded to Keycloak 23.0.6

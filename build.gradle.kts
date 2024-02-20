@@ -9,12 +9,12 @@ plugins {
 }
 
 group = "com.vymalo.keycloak.webhook"
-version = "0.4.0"
+version = "0.5.0"
 
 val gsonVersion = "2.10.1"
-val amqpVersion = "5.17.0"
-val okhttp3Version = "4.10.0"
-val okioVersion = "3.0.0"
+val amqpVersion = "5.20.0"
+val okhttp3Version = "4.12.0"
+val okioVersion = "3.6.0"
 
 repositories {
     mavenCentral()
@@ -23,19 +23,20 @@ repositories {
 dependencies {
     testImplementation(kotlin("test"))
 
-    api("org.apache.commons", "commons-lang3", "3.12.0")
+    api("org.apache.commons", "commons-lang3", "3.14.0")
 
     implementation(kotlin("stdlib"))
 
-    implementation("org.keycloak", "keycloak-services", "22.0.4")
-    implementation("org.keycloak", "keycloak-server-spi", "22.0.4")
-    implementation("org.keycloak", "keycloak-server-spi-private", "22.0.4")
+    implementation("org.keycloak", "keycloak-services", "23.0.6")
+    implementation("org.keycloak", "keycloak-server-spi", "23.0.6")
+    implementation("org.keycloak", "keycloak-server-spi-private", "23.0.6")
 
     api("com.squareup.okhttp3", "okhttp", okhttp3Version)
     api("com.rabbitmq", "amqp-client", amqpVersion)
     api("com.google.code.gson", "gson", gsonVersion)
 
-    api("org.slf4j", "slf4j-log4j12", "1.7.36")
+    api("org.slf4j", "slf4j-log4j12", "2.0.12")
+    api("com.squareup.okio", "okio-jvm", okioVersion)
 }
 
 tasks.test {

@@ -15,7 +15,7 @@ class AmqpWebhookHandler(
 ) : WebhookHandler {
     private var channel: Channel
     private var connection: Connection
-    private val exchange: String
+    private val exchange: String = amqp.exchange
 
     companion object {
         @JvmStatic
@@ -39,7 +39,6 @@ class AmqpWebhookHandler(
     }
 
     init {
-        exchange = amqp.exchange
 
         val connectionFactory = ConnectionFactory()
         connectionFactory.username = amqp.username

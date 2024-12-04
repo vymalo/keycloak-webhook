@@ -2,7 +2,7 @@ import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 
 plugins {
-    kotlin("jvm") version "1.9.21"
+    kotlin("jvm") version "1.9.0"
     id("org.openapi.generator") version "7.10.0"
     id("com.github.johnrengelman.shadow") version "8.1.1"
     id("groovy")
@@ -14,7 +14,7 @@ version = "0.6.0"
 val gsonVersion = "2.11.0"
 val amqpVersion = "5.23.0"
 val okhttp3Version = "4.12.0"
-val okioVersion = "3.9.1"
+val okioVersion = "3.6.0"
 
 repositories {
     mavenCentral()

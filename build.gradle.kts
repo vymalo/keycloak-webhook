@@ -2,19 +2,19 @@ import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 
 plugins {
-    kotlin("jvm") version "1.9.0"
-    id("org.openapi.generator") version "7.10.0"
+    kotlin("jvm") version "2.1.10"
+    id("org.openapi.generator") version "7.12.0"
     id("com.github.johnrengelman.shadow") version "8.1.1"
     id("groovy")
 }
 
 group = "com.vymalo.keycloak.webhook"
-version = "0.6.0"
+version = "0.7.0"
 
-val gsonVersion = "2.11.0"
-val amqpVersion = "5.23.0"
+val gsonVersion = "2.12.1"
+val amqpVersion = "5.25.0"
 val okhttp3Version = "4.12.0"
-val okioVersion = "3.6.0"
+val okioVersion = "3.10.2"
 
 repositories {
     mavenCentral()
@@ -27,15 +27,15 @@ dependencies {
 
     implementation(kotlin("stdlib"))
 
-    implementation("org.keycloak", "keycloak-services", "26.0.7")
-    implementation("org.keycloak", "keycloak-server-spi", "26.0.7")
-    implementation("org.keycloak", "keycloak-server-spi-private", "26.0.7")
+    implementation("org.keycloak", "keycloak-services", "26.1.3")
+    implementation("org.keycloak", "keycloak-server-spi", "26.1.3")
+    implementation("org.keycloak", "keycloak-server-spi-private", "26.1.3")
 
     api("com.squareup.okhttp3", "okhttp", okhttp3Version)
     api("com.rabbitmq", "amqp-client", amqpVersion)
     api("com.google.code.gson", "gson", gsonVersion)
 
-    api("org.slf4j", "slf4j-log4j12", "2.0.16")
+    api("org.slf4j", "slf4j-log4j12", "2.0.17")
     api("com.squareup.okio", "okio-jvm", okioVersion)
 }
 
@@ -47,7 +47,7 @@ kotlin {
     jvmToolchain(17)
 }
 
-val generatedSourcesDir = "$buildDir/generated/openapi"
+val generatedSourcesDir = "${layout.buildDirectory.asFile.get()}/generated/openapi"
 val openapiPackageName = "com.vymalo.keycloak.openapi.client"
 
 openApiGenerate {
@@ -90,10 +90,11 @@ tasks {
         dependencies {
             include(dependency("com.squareup.okhttp3:okhttp:$okhttp3Version"))
             include(dependency("com.squareup.okio:okio-jvm:$okioVersion"))
-            include(dependency("org.jetbrains.kotlin:kotlin-stdlib:1.9.0"))
-            include(dependency("org.jetbrains.kotlin:kotlin-reflect:1.9.0"))
             include(dependency("com.rabbitmq:amqp-client:$amqpVersion"))
             include(dependency("com.google.code.gson:gson:$gsonVersion"))
+            include(dependency("org.jetbrains.kotlin:kotlin-stdlib:2.1.10"))
+//            include(dependency("org.jetbrains.kotlin:kotlin-stdlib:1.9.0"))
+//            include(dependency("org.jetbrains.kotlin:kotlin-reflect:1.9.0"))
         }
         dependsOn(build)
     }

@@ -1,5 +1,5 @@
 # Changelog
 
-## v0.6.0
+## v0.7.0
 
-- Upgraded to Keycloak 26.0.7
+- Upgraded to Keycloak 26.1.3

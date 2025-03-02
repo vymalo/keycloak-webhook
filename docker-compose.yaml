@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   keycloak:
     build:
@@ -33,7 +31,7 @@ services:
       - start-dev
 
   rabbitmq:
-    image: docker.io/bitnami/rabbitmq
+    image: rabbitmq:3-management
     ports:
       - '4369:4369'
       - '5551:5551'
@@ -42,8 +40,8 @@ services:
       - '25672:25672'
       - '15672:15672'
     environment:
-      - RABBITMQ_USERNAME=username
-      - RABBITMQ_PASSWORD=password
+      - RABBITMQ_DEFAULT_USER=username
+      - RABBITMQ_DEFAULT_PASS=password
 
   watcher:
     image: ssegning/api-watcher:latest

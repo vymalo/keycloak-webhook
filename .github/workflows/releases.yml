@@ -26,6 +26,11 @@ jobs:
         with:
           name: target-jar
           path: build/libs/*.jar
+      - name: Archive Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: target-jar
+          path: "*/build/libs/*.jar"
 
   release:
     needs: build
@@ -55,4 +60,4 @@ jobs:
           prerelease: false
           allowUpdates: true
           bodyFile: CHANGELOG.md
-          tag: v0.7.0
+          tag: v0.8.0

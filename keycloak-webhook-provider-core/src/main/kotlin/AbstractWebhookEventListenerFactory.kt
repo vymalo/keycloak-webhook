@@ -1,24 +1,54 @@
 package com.vymalo.keycloak.webhook
 
-import com.vymalo.keycloak.openapi.client.model.WebhookRequest
-import com.vymalo.keycloak.webhook.service.WebhookHandler
+import com.vymalo.keycloak.webhook.helper.cf
+import com.vymalo.keycloak.webhook.helper.eventsTakenKey
+import org.keycloak.Config
 import org.keycloak.events.Event
 import org.keycloak.events.EventListenerProvider
+import org.keycloak.events.EventListenerProviderFactory
 import org.keycloak.events.admin.AdminEvent
+import org.keycloak.models.KeycloakSession
+import org.keycloak.models.KeycloakSessionFactory
+import org.keycloak.provider.ServerInfoAwareProviderFactory
 import org.slf4j.LoggerFactory
 import java.math.BigDecimal
 
-class WebhookEventListenerProvider(
-    private val handlers: Set<WebhookHandler>?,
-    private val takeList: Set<String>?
-) : EventListenerProvider {
+abstract class AbstractWebhookEventListenerFactory(
+    private val delegate: WebhookHandler
+) : EventListenerProviderFactory,
+    ServerInfoAwareProviderFactory,
+    EventListenerProvider,
+    WebhookHandler by delegate {
+    private var takeList: Set<String>? = null
+
+    override fun getOperationalInfo() = mapOf("version" to "0.8.0")
+
     companion object {
         @JvmStatic
-        private val LOG = LoggerFactory.getLogger(WebhookEventListenerProvider::class.java)
+        private val LOG = LoggerFactory.getLogger(AbstractWebhookEventListenerFactory::class.java)
     }
 
-    override fun close() {
+    override fun create(session: KeycloakSession): EventListenerProvider {
+        ensureParametersInit()
+        return this
     }
+
+    @Synchronized
+    private fun ensureParametersInit() {
+        synchronized(delegate) {
+            delegate.initHandler()
+
+            takeList = eventsTakenKey.cf()
+                ?.trim()
+                ?.split(",")
+                ?.map { it.trim() }
+                ?.toSet()
+        }
+    }
+
+    override fun init(config: Config.Scope) {}
+
+    override fun postInit(factory: KeycloakSessionFactory) {}
 
     override fun onEvent(event: Event) = send(
         event.id,
@@ -61,12 +91,12 @@ class WebhookEventListenerProvider(
         resourcePath: String?,
         representation: String?,
     ) {
-        if (takeList != null && type !in takeList) {
+        if (takeList != null && type !in takeList!!) {
             LOG.debug("Event {} not in the taken list. Will be skipped ({}).", type, takeList)
             return
         }
 
-        val request = WebhookRequest(
+        val request = WebhookPayload(
             id = id,
             time = if (time == null) null else BigDecimal(time),
             clientId = clientId,
@@ -80,13 +110,11 @@ class WebhookEventListenerProvider(
             representation = representation
         )
 
-        handlers?.forEach {
-            try {
-                LOG.debug("Sending [{}] webhook for event type {}: {}", it.handler(), type, request)
-                it.sendWebhook(request)
-            } catch (e: Throwable) {
-                LOG.error("Could not send webhook", e)
-            }
+        try {
+            LOG.debug("Sending [{}] webhook for event type {}: {}", delegate.getId(), type, request)
+            delegate.sendWebhook(request)
+        } catch (e: Throwable) {
+            LOG.error("Could not send webhook", e)
         }
     }
 }

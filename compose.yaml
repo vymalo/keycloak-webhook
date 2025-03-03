@@ -1,7 +1,7 @@
 services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.1.3
-    restart: unless-stopped
+    #restart: unless-stopped
     ports:
       - '9100:9100'
     environment:
@@ -30,17 +30,19 @@ services:
       - -c
       - |
         set -ex
-        cp /tmp/libs/*-all.jar /opt/keycloak/providers
+        cp /tmp/libs-*/*-all.jar /opt/keycloak/providers
 
-        /opt/keycloak/bin/kc.sh build
         /opt/keycloak/bin/kc.sh start-dev --import-realm
 
     volumes:
       - ./.docker/keycloak-config/:/opt/keycloak/data/import/:ro
-      - ./build/libs:/tmp/libs:ro
+      - ./keycloak-webhook-provider-core/build/libs:/tmp/libs-core:ro
+      - ./keycloak-webhook-provider-amqp/build/libs:/tmp/libs-amqp:ro
+      - ./keycloak-webhook-provider-http/build/libs:/tmp/libs-http:ro
     links:
       - prism
 
+  # This is a mock server for the receiving end of the webhook
   rabbitmq:
     image: rabbitmq:3-management
     ports:
@@ -54,7 +56,7 @@ services:
       - RABBITMQ_DEFAULT_USER=username
       - RABBITMQ_DEFAULT_PASS=password
 
-  # This is a mock server for the SMS API
+  # This is a mock server for the receiving end of the webhook
   prism:
     image: stoplight/prism:latest
     ports:
@@ -66,4 +68,3 @@ services:
       - /webhook.open-api.yml
     volumes:
       - ./openapi/webhook.open-api.yml:/webhook.open-api.yml
-

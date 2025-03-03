@@ -13,7 +13,8 @@
   "eventsExpiration": 86400,
   "eventsListeners": [
     "jboss-logging",
-    "listener-webhook"
+    "webhook-amqp",
+    "webhook-http"
   ],
   "adminEventsEnabled": true,
   "adminEventsDetailsEnabled": true,

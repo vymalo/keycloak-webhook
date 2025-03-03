@@ -1,31 +1,24 @@
-package com.vymalo.keycloak.webhook.service
+package com.vymalo.keycloak.webhook
 
 import com.vymalo.keycloak.openapi.client.handler.WebhookApi
 import com.vymalo.keycloak.openapi.client.infrastructure.ApiClient
-import com.vymalo.keycloak.openapi.client.model.WebhookRequest
-import com.vymalo.keycloak.webhook.model.ClientConfig
+import com.vymalo.keycloak.webhook.models.HttpConfig
+import com.vymalo.keycloak.webhook.utils.toWebhookRequest
 import org.slf4j.LoggerFactory
 
-class HttpWebhookHandler(
-    http: ClientConfig.Companion.Http
-) : WebhookHandler {
-    private val webhookApi: WebhookApi
+class HttpWebhookHandler : WebhookHandler {
+    private lateinit var webhookApi: WebhookApi
 
     companion object {
         private val logger = LoggerFactory.getLogger(HttpWebhookHandler::class.java)
+        const val PROVIDER_ID = "webhook-http"
     }
 
-    init {
-        ApiClient.username = http.username
-        ApiClient.password = http.password
-        webhookApi = WebhookApi(basePath = http.baseUrl)
-    }
-
-    override fun sendWebhook(request: WebhookRequest) {
+    override fun sendWebhook(request: WebhookPayload) {
         var attempt = 0
         while (attempt < 3) {
             try {
-                webhookApi.sendWebhook(request)
+                webhookApi.sendWebhook(request.toWebhookRequest())
                 logger.debug("Webhook sent successfully on attempt ${attempt + 1}")
                 break // Exit loop if successful
             } catch (ex: Exception) {
@@ -40,5 +33,13 @@ class HttpWebhookHandler(
         }
     }
 
-    override fun handler(): String = "http"
+    override fun getId(): String = PROVIDER_ID
+
+    override fun initHandler() {
+        val http = HttpConfig.fromEnv()
+
+        ApiClient.username = http.username
+        ApiClient.password = http.password
+        webhookApi = WebhookApi(basePath = http.baseUrl)
+    }
 }

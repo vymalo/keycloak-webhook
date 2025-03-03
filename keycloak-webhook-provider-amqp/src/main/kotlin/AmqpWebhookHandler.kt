@@ -1,37 +1,28 @@
-package com.vymalo.keycloak.webhook.service
+package com.vymalo.keycloak.webhook
 
 import com.google.gson.Gson
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.Channel
 import com.rabbitmq.client.Connection
 import com.rabbitmq.client.ConnectionFactory
-import com.vymalo.keycloak.openapi.client.model.WebhookRequest
-import com.vymalo.keycloak.webhook.model.ClientConfig
+import com.vymalo.keycloak.webhook.models.AmqpConfig
 import org.keycloak.utils.MediaType
 import org.slf4j.LoggerFactory
 import java.nio.charset.StandardCharsets
 
-class AmqpWebhookHandler(
-    private val amqp: ClientConfig.Companion.Amqp
-) : WebhookHandler {
-    private var channel: Channel
-    private var connection: Connection
-    private val exchange: String = amqp.exchange
-    private val connectionFactory: ConnectionFactory = ConnectionFactory().apply {
-        username = amqp.username
-        password = amqp.password
-        virtualHost = amqp.vHost
-        host = amqp.host
-        port = amqp.port.toInt()
-        isAutomaticRecoveryEnabled = true
-        if (amqp.ssl) {
-            useSslProtocol()
-        }
-    }
+class AmqpWebhookHandler : WebhookHandler {
+    private lateinit var channel: Channel
+    private lateinit var connection: Connection
+    private lateinit var exchange: String
+    private lateinit var connectionFactory: ConnectionFactory
 
     companion object {
+        const val PROVIDER_ID = "webhook-amqp"
+        
         @JvmStatic
         private val gson = Gson()
+
+        @JvmStatic
         private val logger = LoggerFactory.getLogger(AmqpWebhookHandler::class.java)
 
         @JvmStatic
@@ -47,13 +38,8 @@ class AmqpWebhookHandler(
         }
 
         @JvmStatic
-        private fun genRoutingKey(request: WebhookRequest): String =
+        private fun genRoutingKey(request: WebhookPayload): String =
             "KC_CLIENT.${request.realmId}.${request.clientId ?: "xxx"}.${request.userId ?: "xxx"}.${request.type}"
-    }
-
-    init {
-        connection = connectionFactory.newConnection()
-        channel = connection.createChannel()
     }
 
     /**
@@ -90,14 +76,16 @@ class AmqpWebhookHandler(
         }
     }
 
-    override fun sendWebhook(request: WebhookRequest) {
+    override fun sendWebhook(request: WebhookPayload) {
         if (!connection.isOpen || !channel.isOpen) {
             ensureConnection()
         }
+
         if (!connection.isOpen || !channel.isOpen) {
             logger.warn("AMQP channel or connection is still closed. Unable to send webhook: {}", request)
             return
         }
+
         try {
             val requestStr = gson.toJson(request)
             channel.basicPublish(
@@ -113,7 +101,7 @@ class AmqpWebhookHandler(
         }
     }
 
-    override fun handler(): String = "amqp"
+    override fun getId(): String = PROVIDER_ID
 
     override fun close() {
         runCatching {
@@ -127,5 +115,27 @@ class AmqpWebhookHandler(
                 connection.close()
             }
         }.onFailure { logger.warn("Error closing connection", it) }
+    }
+
+
+    override fun initHandler() {
+        val amqp = AmqpConfig.fromEnv()
+
+        exchange = amqp.exchange
+
+        connectionFactory = ConnectionFactory().apply {
+            username = amqp.username
+            password = amqp.password
+            virtualHost = amqp.vHost
+            host = amqp.host
+            port = amqp.port.toInt()
+            isAutomaticRecoveryEnabled = true
+            if (amqp.ssl) {
+                useSslProtocol()
+            }
+        }
+
+        connection = connectionFactory.newConnection()
+        channel = connection.createChannel()
     }
 }

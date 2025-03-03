@@ -1,14 +1,13 @@
 services:
   keycloak:
-    build:
-      context: .
-      dockerfile: Dev.Dockerfile
+    image: quay.io/keycloak/keycloak:26.1.3
+    restart: unless-stopped
     ports:
       - '9100:9100'
     environment:
       # WEBHOOK_EVENTS_TAKEN: "LOGIN,REGISTER,LOGOUT"
 
-      WEBHOOK_HTTP_BASE_PATH: "http://watcher:3000/api"
+      WEBHOOK_HTTP_BASE_PATH: "http://prism:4010"
       WEBHOOK_HTTP_AUTH_USERNAME: "admin"
       WEBHOOK_HTTP_AUTH_PASSWORD: "password"
 
@@ -21,14 +20,26 @@ services:
 
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: password
-      #KEYCLOAK_FRONTEND_URL: http://localhost:9100
 
       KC_HTTP_PORT: 9100
       KC_METRICS_ENABLED: 'true'
       KC_LOG_CONSOLE_COLOR: 'true'
       KC_HEALTH_ENABLED: 'true'
+    entrypoint: /bin/sh
     command:
-      - start-dev
+      - -c
+      - |
+        set -ex
+        cp /tmp/libs/*-all.jar /opt/keycloak/providers
+
+        /opt/keycloak/bin/kc.sh build
+        /opt/keycloak/bin/kc.sh start-dev --import-realm
+
+    volumes:
+      - ./.docker/keycloak-config/:/opt/keycloak/data/import/:ro
+      - ./build/libs:/tmp/libs:ro
+    links:
+      - prism
 
   rabbitmq:
     image: rabbitmq:3-management
@@ -43,14 +54,16 @@ services:
       - RABBITMQ_DEFAULT_USER=username
       - RABBITMQ_DEFAULT_PASS=password
 
-  watcher:
-    image: ssegning/api-watcher:latest
-    platform: linux/amd64
+  # This is a mock server for the SMS API
+  prism:
+    image: stoplight/prism:latest
     ports:
-      - "3000:3000"
+      - '4010:4010'
+    command:
+      - mock
+      - -h
+      - 0.0.0.0
+      - /webhook.open-api.yml
     volumes:
-      - watcher_data:/app/data
-
-volumes:
-  watcher_data:
+      - ./openapi/webhook.open-api.yml:/webhook.open-api.yml
 

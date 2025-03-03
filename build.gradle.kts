@@ -93,8 +93,6 @@ tasks {
             include(dependency("com.rabbitmq:amqp-client:$amqpVersion"))
             include(dependency("com.google.code.gson:gson:$gsonVersion"))
             include(dependency("org.jetbrains.kotlin:kotlin-stdlib:2.1.10"))
-//            include(dependency("org.jetbrains.kotlin:kotlin-stdlib:1.9.0"))
-//            include(dependency("org.jetbrains.kotlin:kotlin-reflect:1.9.0"))
         }
         dependsOn(build)
     }

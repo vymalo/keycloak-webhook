@@ -1,0 +1,40 @@
+{
+  "id": "vymalo-wh-01",
+  "realm": "vymalo-wh-01",
+  "displayName": "vymalo WH 01",
+  "displayNameHtml": "<b>vymalo</b> WH 01",
+  "registrationAllowed": false,
+  "registrationEmailAsUsername": false,
+  "rememberMe": false,
+  "loginWithEmailAllowed": false,
+  "resetPasswordAllowed": false,
+  "enabled": true,
+  "eventsEnabled": true,
+  "eventsExpiration": 86400,
+  "eventsListeners": [
+    "jboss-logging",
+    "listener-webhook"
+  ],
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": true,
+  "attributes": {
+    "adminEventsExpiration": "864000"
+  },
+  "users": [
+    {
+      "email": "test@admin",
+      "username": "test",
+      "firstName": "DevOps",
+      "lastName": "SRE",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "temporary": false,
+          "type": "password",
+          "value": "test"
+        }
+      ]
+    }
+  ]
+}

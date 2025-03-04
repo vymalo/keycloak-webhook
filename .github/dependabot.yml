@@ -3,10 +3,12 @@ updates:
   - package-ecosystem: "gradle"
     directory: "/"
     schedule:
-      interval: "weekly"
-    rebase-strategy: "disabled"
+      interval: "daily"
+    allow:
+      - dependency-type: production
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-    rebase-strategy: "disabled"
+    allow:
+      - dependency-type: production

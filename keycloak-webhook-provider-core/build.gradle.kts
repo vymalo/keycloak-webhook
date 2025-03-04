@@ -33,6 +33,7 @@ tasks {
     val shadowJar by existing(ShadowJar::class) {
         dependencies {
             include(dependency("org.jetbrains.kotlin:kotlin-stdlib"))
+            include(dependency("com.google.code.gson:gson"))
         }
         dependsOn(build)
     }

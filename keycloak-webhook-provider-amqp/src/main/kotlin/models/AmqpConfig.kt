@@ -12,16 +12,14 @@ data class AmqpConfig(
     val exchange: String,
 ) {
     companion object {
-        fun fromEnv(): AmqpConfig {
-            return AmqpConfig(
-                username = amqpUsernameKey.cff(),
-                password = amqpPasswordKey.cff(),
-                host = amqpHostKey.cff(),
-                port = amqpPortKey.cff(),
-                vHost = amqpVHostKey.cf(),
-                ssl = amqpSsl.bf(),
-                exchange = amqpExchangeKey.cff()
-            )
-        }
+        fun fromEnv(): AmqpConfig = AmqpConfig(
+            username = amqpUsernameKey.cff(),
+            password = amqpPasswordKey.cff(),
+            host = amqpHostKey.cff(),
+            port = amqpPortKey.cff(),
+            vHost = amqpVHostKey.cf(),
+            ssl = amqpSsl.bf(),
+            exchange = amqpExchangeKey.cff()
+        )
     }
 }

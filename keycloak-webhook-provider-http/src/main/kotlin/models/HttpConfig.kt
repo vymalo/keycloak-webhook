@@ -8,13 +8,11 @@ data class HttpConfig(
     val baseUrl: String,
 ) {
     companion object {
-        fun fromEnv(): HttpConfig {
-            return HttpConfig(
-                username = httpAuthUsernameKey.cf(),
-                password = httpAuthPasswordKey.cf(),
-                baseUrl = httpBaseBathKey.cff()
-            )
-        }
+        fun fromEnv(): HttpConfig = HttpConfig(
+            username = httpAuthUsernameKey.cf(),
+            password = httpAuthPasswordKey.cf(),
+            baseUrl = httpBaseBathKey.cff()
+        )
     }
 }
 

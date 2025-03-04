@@ -4,6 +4,15 @@ A modular Keycloak event listener plugin that triggers webhooks whenever specifi
 logout) occur in Keycloak. This project leverages a multi-module design so you can choose which transport provider (HTTP
 or AMQP) to deploy based on your needs.
 
+| Keycloak Version | Plugin Version |
+|------------------|----------------|
+| 21               | ✅ 0.8.2        |
+| 22               | ✅ 0.8.2        |
+| 23               | ✅ 0.8.2        |
+| 24               | ✅ 0.8.2        |
+| 25               | ✅ 0.8.2        |
+| 26               | ✅ 0.8.2        |
+
 ---
 
 ## 1. What It Is
@@ -209,7 +218,6 @@ graph TD
     E[AMQP Provider]
     F[External HTTP Server]
     G[RabbitMQ Broker]
-    
     A --> B
     B --> C
     C --> D

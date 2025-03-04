@@ -1,48 +1,85 @@
+x-keycloak-common-env: &keycloak-common-env
+  WEBHOOK_HTTP_BASE_PATH: "http://prism:4010"
+  WEBHOOK_HTTP_AUTH_USERNAME: "admin"
+  WEBHOOK_HTTP_AUTH_PASSWORD: "password"
+  WEBHOOK_AMQP_HOST: rabbitmq
+  WEBHOOK_AMQP_USERNAME: username
+  WEBHOOK_AMQP_PASSWORD: password
+  WEBHOOK_AMQP_PORT: 5672
+  WEBHOOK_AMQP_EXCHANGE: keycloak
+  WEBHOOK_AMQP_VHOST: "/"
+  KEYCLOAK_ADMIN: admin
+  KEYCLOAK_ADMIN_PASSWORD: password
+  KC_LOG_CONSOLE_COLOR: 'true'
+
+x-keycloak-common-extra: &keycloak-common-extra
+  entrypoint: /bin/sh
+  command:
+    - -c
+    - |
+      set -ex
+      cp /tmp/libs-*/*-all.jar /opt/keycloak/providers # Copy the provider jars to the providers directory
+      /opt/keycloak/bin/kc.sh start-dev --import-realm # Start Keycloak in dev mode and import the realm
+  volumes:
+    - ./.docker/keycloak-config/:/opt/keycloak/data/import/:ro
+    - ./keycloak-webhook-provider-core/build/libs:/tmp/libs-core:ro
+    - ./keycloak-webhook-provider-amqp/build/libs:/tmp/libs-amqp:ro
+    - ./keycloak-webhook-provider-http/build/libs:/tmp/libs-http:ro
+  links:
+    - prism
+
 services:
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.1.3
-    #restart: unless-stopped
+  keycloak-21:
+    image: quay.io/keycloak/keycloak:21.1.2
     ports:
-      - '9100:9100'
+      - '9021:9021'
     environment:
-      # WEBHOOK_EVENTS_TAKEN: "LOGIN,REGISTER,LOGOUT"
+      <<: *keycloak-common-env
+      KC_HTTP_PORT: 9021
+    <<: *keycloak-common-extra
+  keycloak-22:
+    image: quay.io/keycloak/keycloak:22.0.5
+    ports:
+      - '9022:9022'
+    environment:
+      <<: *keycloak-common-env
+      KC_HTTP_PORT: 9022
+    <<: *keycloak-common-extra
+  keycloak-23:
+    image: quay.io/keycloak/keycloak:23.0.7
+    ports:
+      - '9023:9023'
+    environment:
+      <<: *keycloak-common-env
+      KC_HTTP_PORT: 9023
+    <<: *keycloak-common-extra
+  keycloak-24:
+    image: quay.io/keycloak/keycloak:24.0.5
+    ports:
+      - '9024:9024'
+    environment:
+      <<: *keycloak-common-env
+      KC_HTTP_PORT: 9024
+    <<: *keycloak-common-extra
 
-      WEBHOOK_HTTP_BASE_PATH: "http://prism:4010"
-      WEBHOOK_HTTP_AUTH_USERNAME: "admin"
-      WEBHOOK_HTTP_AUTH_PASSWORD: "password"
+  keycloak-25:
+    image: quay.io/keycloak/keycloak:25.0.6
+    ports:
+      - '9025:9025'
+    environment:
+      <<: *keycloak-common-env
+      KC_HTTP_PORT: 9025
+    <<: *keycloak-common-extra
 
-      WEBHOOK_AMQP_HOST: rabbitmq
-      WEBHOOK_AMQP_USERNAME: username
-      WEBHOOK_AMQP_PASSWORD: password
-      WEBHOOK_AMQP_PORT: 5672
-      WEBHOOK_AMQP_EXCHANGE: keycloak
-      WEBHOOK_AMQP_VHOST: "/"
+  keycloak-26:
+    image: quay.io/keycloak/keycloak:26.1.2
+    ports:
+      - '9026:9026'
+    environment:
+      <<: *keycloak-common-env
+      KC_HTTP_PORT: 9026
+    <<: *keycloak-common-extra
 
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: password
-
-      KC_HTTP_PORT: 9100
-      KC_METRICS_ENABLED: 'true'
-      KC_LOG_CONSOLE_COLOR: 'true'
-      KC_HEALTH_ENABLED: 'true'
-    entrypoint: /bin/sh
-    command:
-      - -c
-      - |
-        set -ex
-        cp /tmp/libs-*/*-all.jar /opt/keycloak/providers
-
-        /opt/keycloak/bin/kc.sh start-dev --import-realm
-
-    volumes:
-      - ./.docker/keycloak-config/:/opt/keycloak/data/import/:ro
-      - ./keycloak-webhook-provider-core/build/libs:/tmp/libs-core:ro
-      - ./keycloak-webhook-provider-amqp/build/libs:/tmp/libs-amqp:ro
-      - ./keycloak-webhook-provider-http/build/libs:/tmp/libs-http:ro
-    links:
-      - prism
-
-  # This is a mock server for the receiving end of the webhook
   rabbitmq:
     image: rabbitmq:3-management
     ports:

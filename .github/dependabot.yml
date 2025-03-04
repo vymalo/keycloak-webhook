@@ -1,6 +1,12 @@
 version: 2
 updates:
-  - package-ecosystem: 'maven'
-    directory: '/'
+  - package-ecosystem: "gradle"
+    directory: "/"
     schedule:
-      interval: 'daily'
+      interval: "weekly"
+    rebase-strategy: "disabled"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    rebase-strategy: "disabled"

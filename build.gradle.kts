@@ -1,5 +1,8 @@
+import org.jetbrains.changelog.date
+
 plugins {
     kotlin("jvm") version "2.1.10"
+    id("org.jetbrains.changelog") version "2.2.1"
 }
 
 group = "com.vymalo.keycloak.webhook"
@@ -15,4 +18,10 @@ subprojects {
     dependencies {
         implementation(kotlin("stdlib"))
     }
+}
+
+changelog {
+    unreleasedTerm.set("next")
+    groups.empty()
+    repositoryUrl.set("https://github.com/vymalo/keycloak-webhook")
 }

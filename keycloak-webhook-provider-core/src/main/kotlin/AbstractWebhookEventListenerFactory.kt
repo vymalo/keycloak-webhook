@@ -21,7 +21,7 @@ abstract class AbstractWebhookEventListenerFactory(
     WebhookHandler by delegate {
     private var takeList: Set<String>? = null
 
-    override fun getOperationalInfo() = mapOf("version" to "0.8.0")
+    override fun getOperationalInfo() = mapOf("version" to "0.8.1")
 
     companion object {
         @JvmStatic

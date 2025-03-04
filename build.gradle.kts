@@ -3,7 +3,7 @@ plugins {
 }
 
 group = "com.vymalo.keycloak.webhook"
-version = "0.8.0"
+version = "0.8.1"
 
 repositories {
     mavenCentral()

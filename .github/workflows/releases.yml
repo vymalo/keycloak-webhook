@@ -25,11 +25,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: target-jar
-          path: build/libs/*.jar
-      - name: Archive Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: target-jar
           path: "*/build/libs/*.jar"
 
   release:
@@ -37,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Download Build Artifacts
         uses: actions/download-artifact@v4
         with:
@@ -60,4 +55,4 @@ jobs:
           prerelease: false
           allowUpdates: true
           bodyFile: CHANGELOG.md
-          tag: v0.8.0
+          tag: v0.8.1

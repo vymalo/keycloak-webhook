@@ -1,5 +1,5 @@
 # Changelog
 
-## v0.8.1
+## v0.8.2
 
 - Fix pipeline

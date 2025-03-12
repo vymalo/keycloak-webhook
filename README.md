@@ -17,7 +17,7 @@ or AMQP) to deploy based on your needs.
 
 ## 1. What It Is
 
-The Keycloak Webhook Plugin consists of three modules:
+The Keycloak Webhook Plugin consists of four modules:
 
 - **Core Module (`keycloak-webhook-provider-core`)**  
   Contains common SPI interfaces, shared models, and helper utilities.
@@ -29,6 +29,10 @@ The Keycloak Webhook Plugin consists of three modules:
 - **HTTP Provider (`keycloak-webhook-provider-http`)**  
   Implements webhook notifications over HTTP. This provider uses OpenAPI-generated clients to ensure compliance with the
   target API.
+
+- **NATS Provider (`keycloak-webhook-provider-nats`)**  
+  Implements webhook notifications over NATS messaging system. If the NATS dependency is present on the classpath, this
+  provider is loaded automatically.
 
 Keycloak uses Java’s `ServiceLoader` mechanism to conditionally load these providers at runtime if their JARs (and
 dependencies) are available.
@@ -47,6 +51,7 @@ Download the latest release artifacts (shaded JARs) from the GitHub releases pag
 curl -L -o keycloak-webhook-provider-core.jar https://github.com/vymalo/keycloak-webhook/releases/download/v<version>/keycloak-webhook-provider-core-<version>-all.jar
 curl -L -o keycloak-webhook-provider-amqp.jar https://github.com/vymalo/keycloak-webhook/releases/download/v<version>/keycloak-webhook-provider-amqp-<version>-all.jar
 curl -L -o keycloak-webhook-provider-http.jar https://github.com/vymalo/keycloak-webhook/releases/download/v<version>/keycloak-webhook-provider-http-<version>-all.jar
+curl -L -o keycloak-webhook-provider-nats.jar https://github.com/vymalo/keycloak-webhook/releases/download/v<version>/keycloak-webhook-provider-nats-<version>-all.jar
 ```
 
 ### a. Docker
@@ -73,6 +78,12 @@ services:
       WEBHOOK_AMQP_VHOST: "/"
       WEBHOOK_AMQP_EXCHANGE: keycloak
       WEBHOOK_AMQP_SSL: "no"
+      # NATS Provider Configuration
+      WEBHOOK_NATS_SERVER_URL: "nats://nats:4222"
+      WEBHOOK_NATS_SUBJECT: "keycloak.events"
+      WEBHOOK_NATS_USERNAME: "username"
+      WEBHOOK_NATS_PASSWORD: "password"
+      WEBHOOK_NATS_SSL: "no"
       # Keycloak Admin Credentials
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: password
@@ -128,6 +139,7 @@ spec:
               curl -L -o /plugins/keycloak-webhook-provider-core.jar https://github.com/vymalo/keycloak-webhook/releases/download/v<version>/keycloak-webhook-provider-core-<version>-all.jar
               curl -L -o /plugins/keycloak-webhook-provider-amqp.jar https://github.com/vymalo/keycloak-webhook/releases/download/v<version>/keycloak-webhook-provider-amqp-<version>-all.jar
               curl -L -o /plugins/keycloak-webhook-provider-http.jar https://github.com/vymalo/keycloak-webhook/releases/download/v<version>/keycloak-webhook-provider-http-<version>-all.jar
+              curl -L -o /plugins/keycloak-webhook-provider-nats.jar https://github.com/vymalo/keycloak-webhook/releases/download/v<version>/keycloak-webhook-provider-nats-<version>-all.jar
               cp /plugins/*.jar /providers/
           volumeMounts:
             - name: providers-volume
@@ -155,6 +167,16 @@ spec:
             - name: WEBHOOK_AMQP_EXCHANGE
               value: "keycloak"
             - name: WEBHOOK_AMQP_SSL
+              value: "no"
+            - name: WEBHOOK_NATS_SERVER_URL
+              value: "nats://nats:4222"
+            - name: WEBHOOK_NATS_SUBJECT
+              value: "keycloak.events"
+            - name: WEBHOOK_NATS_USERNAME
+              value: "username"
+            - name: WEBHOOK_NATS_PASSWORD
+              value: "password"
+            - name: WEBHOOK_NATS_SSL
               value: "no"
           volumeMounts:
             - name: providers-volume
@@ -199,6 +221,29 @@ spec:
 - **`WEBHOOK_AMQP_SSL` (optional)**  
   `"yes"` or `"no"`, indicating if SSL is enabled.
 
+### NATS Provider
+
+- **`WEBHOOK_NATS_SERVER_URL`**  
+  NATS server URL (e.g., `"nats://localhost:4222"`).
+
+- **`WEBHOOK_NATS_SUBJECT`**  
+  Subject to publish messages to.
+
+- **`WEBHOOK_NATS_USERNAME` (optional)**  
+  Username for NATS authentication.
+
+- **`WEBHOOK_NATS_PASSWORD` (optional)**  
+  Password for NATS authentication.
+
+- **`WEBHOOK_NATS_TOKEN` (optional)**  
+  Token for NATS authentication.
+
+- **`WEBHOOK_NATS_CREDENTIALS` (optional)**  
+  Path to credentials file for NATS authentication.
+
+- **`WEBHOOK_NATS_SSL` (optional)**  
+  `"yes"` or `"no"`, indicating if SSL is enabled.
+
 - **`WEBHOOK_EVENTS_TAKEN` (optional)**  
   A comma-separated list of Keycloak events (e.g., `"LOGIN,REGISTER,LOGOUT"`) that should trigger webhooks. If not
   specified, all events are processed.
@@ -216,27 +261,31 @@ graph TD
     C[Core Module]
     D[HTTP Provider]
     E[AMQP Provider]
-    F[External HTTP Server]
-    G[RabbitMQ Broker]
+    F[NATS Provider]
+    G[External HTTP Server]
+    H[RabbitMQ Broker]
+    I[NATS Server]
     A --> B
     B --> C
     C --> D
     C --> E
-    D --> F
-    E --> G
+    C --> F
+    D --> G
+    E --> H
+    F --> I
 ```
 
 - **Core Module:**  
   Provides common interfaces, models, and utilities.
 
 - **Provider Modules:**  
-  Implement specific webhook delivery mechanisms (HTTP or AMQP) and are conditionally loaded if their JARs are present.
+  Implement specific webhook delivery mechanisms (HTTP, AMQP, or NATS) and are conditionally loaded if their JARs are present.
 
 - **ServiceLoader:**  
   Uses Java’s SPI to discover and load the providers.
 
 - **External Systems:**  
-  Webhook notifications are sent to an HTTP server or published to a RabbitMQ broker.
+  Webhook notifications are sent to an HTTP server, published to a RabbitMQ broker, or published to a NATS server.
 
 ---
 

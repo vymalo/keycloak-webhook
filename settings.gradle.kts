@@ -6,3 +6,4 @@ rootProject.name = "keycloak-webhook"
 include("keycloak-webhook-provider-core")
 include("keycloak-webhook-provider-amqp")
 include("keycloak-webhook-provider-http")
+include("keycloak-webhook-provider-nats")

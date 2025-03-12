@@ -35,7 +35,12 @@ tasks {
     val shadowJar by existing(ShadowJar::class) {
         dependencies {
             include(dependency("io.nats:jnats"))
+            include(dependency("com.google.code.gson:gson"))
+            include(dependency("org.slf4j:slf4j-log4j12"))
+            include(dependency("org.slf4j:slf4j-api"))
         }
+        mergeServiceFiles()
+        relocate("com.google.gson", "com.vymalo.keycloak.webhook.shaded.com.google.gson")
         dependsOn(build)
     }
 }

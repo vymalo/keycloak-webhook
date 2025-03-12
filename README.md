@@ -81,8 +81,11 @@ services:
       # NATS Provider Configuration
       WEBHOOK_NATS_SERVER_URL: "nats://nats:4222"
       WEBHOOK_NATS_SUBJECT: "keycloak.events"
-      WEBHOOK_NATS_USERNAME: "username"
-      WEBHOOK_NATS_PASSWORD: "password"
+      # Option 1: Username/Password Authentication
+      # WEBHOOK_NATS_USERNAME: "username"
+      # WEBHOOK_NATS_PASSWORD: "password"
+      # Option 2: Token Authentication
+      WEBHOOK_NATS_TOKEN: "your-nats-token"
       WEBHOOK_NATS_SSL: "no"
       # Keycloak Admin Credentials
       KEYCLOAK_ADMIN: admin
@@ -172,10 +175,14 @@ spec:
               value: "nats://nats:4222"
             - name: WEBHOOK_NATS_SUBJECT
               value: "keycloak.events"
-            - name: WEBHOOK_NATS_USERNAME
-              value: "username"
-            - name: WEBHOOK_NATS_PASSWORD
-              value: "password"
+            # Option 1: Username/Password Authentication
+            # - name: WEBHOOK_NATS_USERNAME
+            #   value: "username"
+            # - name: WEBHOOK_NATS_PASSWORD
+            #   value: "password"
+            # Option 2: Token Authentication
+            - name: WEBHOOK_NATS_TOKEN
+              value: "your-nats-token"
             - name: WEBHOOK_NATS_SSL
               value: "no"
           volumeMounts:
@@ -229,17 +236,21 @@ spec:
 - **`WEBHOOK_NATS_SUBJECT`**  
   Subject to publish messages to.
 
-- **`WEBHOOK_NATS_USERNAME` (optional)**  
-  Username for NATS authentication.
+**Authentication Options (choose one):**
 
-- **`WEBHOOK_NATS_PASSWORD` (optional)**  
-  Password for NATS authentication.
+- **Option 1: Username/Password Authentication**
+  - **`WEBHOOK_NATS_USERNAME`**  
+    Username for NATS authentication.
+  - **`WEBHOOK_NATS_PASSWORD`**  
+    Password for NATS authentication.
 
-- **`WEBHOOK_NATS_TOKEN` (optional)**  
-  Token for NATS authentication.
+- **Option 2: Token Authentication**
+  - **`WEBHOOK_NATS_TOKEN`**  
+    Token for NATS authentication.
 
-- **`WEBHOOK_NATS_CREDENTIALS` (optional)**  
-  Path to credentials file for NATS authentication.
+- **Option 3: Credentials File Authentication**
+  - **`WEBHOOK_NATS_CREDENTIALS`**  
+    Path to credentials file for NATS authentication.
 
 - **`WEBHOOK_NATS_SSL` (optional)**  
   `"yes"` or `"no"`, indicating if SSL is enabled.

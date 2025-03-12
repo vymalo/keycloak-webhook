@@ -38,6 +38,8 @@ tasks {
             include(dependency("com.google.code.gson:gson"))
             include(dependency("org.slf4j:slf4j-log4j12"))
             include(dependency("org.slf4j:slf4j-api"))
+            include(dependency("org.jetbrains.kotlin:kotlin-stdlib"))
+            include(dependency("org.jetbrains:annotations"))
         }
         mergeServiceFiles()
         relocate("com.google.gson", "com.vymalo.keycloak.webhook.shaded.com.google.gson")

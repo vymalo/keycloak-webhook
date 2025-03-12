@@ -1,36 +1,37 @@
-name: Build
-
+name: CI
 on:
   push:
-    branches: [ main, add-nats-provider ]
+    branches:
+      - main
+      - add-nats-provider
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
+
   build:
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v2
-    
-    - name: Set up JDK 17
-      uses: actions/setup-java@v2
-      with:
-        java-version: '17'
-        distribution: 'temurin'
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@v3
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@v3
+        with:
+          arguments: shadow
+      - name: Centralize Artifacts
+        run: |
+          mkdir -p dist
+          cp */build/libs/*.jar ./
         
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
-      
-    - name: Build with Gradle
-      run: ./gradlew build
-      
-    - name: Build Shadow JARs
-      run: ./gradlew shadowJar
-      
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v2
-      with:
-        name: keycloak-webhook-jars
-        path: |
-          **/build/libs/*-all.jar
+      - name: Archive Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: target-jar
+          path: "*.jar"

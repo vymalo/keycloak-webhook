@@ -84,12 +84,26 @@ class NatsWebhookHandler : WebhookHandler {
             }
         }
 
-        // Configure SSL if enabled
+        // Configure SSL/TLS
         if (nats.ssl) {
             optionsBuilder.secure()
         }
 
-        connection = Nats.connect(optionsBuilder.build())
-        logger.info("Connected to NATS server at {}", nats.serverUrl)
+        try {
+            // First try with the configured SSL setting
+            connection = Nats.connect(optionsBuilder.build())
+            logger.info("Connected to NATS server at {} with SSL={}", nats.serverUrl, nats.ssl)
+        } catch (e: Exception) {
+            if (e.message?.contains("SSL required by server") == true && !nats.ssl) {
+                // If the server requires SSL but we didn't enable it, try again with SSL enabled
+                logger.info("Server requires SSL, retrying with SSL enabled")
+                optionsBuilder.secure()
+                connection = Nats.connect(optionsBuilder.build())
+                logger.info("Connected to NATS server at {} with SSL=true", nats.serverUrl)
+            } else {
+                // If it's another error or SSL was already enabled, rethrow
+                throw e
+            }
+        }
     }
 }

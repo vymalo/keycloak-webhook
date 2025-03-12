@@ -86,6 +86,7 @@ services:
       # WEBHOOK_NATS_PASSWORD: "password"
       # Option 2: Token Authentication
       WEBHOOK_NATS_TOKEN: "your-nats-token"
+      # SSL will be auto-detected if required by the server
       WEBHOOK_NATS_SSL: "no"
       # Keycloak Admin Credentials
       KEYCLOAK_ADMIN: admin
@@ -183,6 +184,7 @@ spec:
             # Option 2: Token Authentication
             - name: WEBHOOK_NATS_TOKEN
               value: "your-nats-token"
+            # SSL will be auto-detected if required by the server
             - name: WEBHOOK_NATS_SSL
               value: "no"
           volumeMounts:
@@ -253,7 +255,7 @@ spec:
     Path to credentials file for NATS authentication.
 
 - **`WEBHOOK_NATS_SSL` (optional)**  
-  `"yes"` or `"no"`, indicating if SSL is enabled.
+  `"yes"` or `"no"`, indicating if SSL is enabled. If the server requires SSL and this is set to "no", the provider will automatically retry with SSL enabled.
 
 - **`WEBHOOK_EVENTS_TAKEN` (optional)**  
   A comma-separated list of Keycloak events (e.g., `"LOGIN,REGISTER,LOGOUT"`) that should trigger webhooks. If not

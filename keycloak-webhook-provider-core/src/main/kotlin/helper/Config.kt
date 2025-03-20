@@ -14,6 +14,14 @@ const val amqpVHostKey = "WEBHOOK_AMQP_VHOST"
 const val amqpExchangeKey = "WEBHOOK_AMQP_EXCHANGE"
 const val amqpSsl = "WEBHOOK_AMQP_SSL"
 
+const val natsServerUrlKey = "WEBHOOK_NATS_SERVER_URL"
+const val natsSubjectKey = "WEBHOOK_NATS_SUBJECT"
+const val natsUsernameKey = "WEBHOOK_NATS_USERNAME"
+const val natsPasswordKey = "WEBHOOK_NATS_PASSWORD"
+const val natsTokenKey = "WEBHOOK_NATS_TOKEN"
+const val natsCredentialsKey = "WEBHOOK_NATS_CREDENTIALS"
+const val natsSsl = "WEBHOOK_NATS_SSL"
+
 private fun getConfig(key: String): String? = System.getenv(key) ?: System.getProperties().getProperty(key)
 
 fun String.cf() = getConfig(this)

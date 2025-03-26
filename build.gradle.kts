@@ -1,12 +1,10 @@
-import org.jetbrains.changelog.date
-
 plugins {
-    kotlin("jvm") version "2.1.10"
+    kotlin("jvm") version "2.1.20"
     id("org.jetbrains.changelog") version "2.2.1"
 }
 
 group = "com.vymalo.keycloak.webhook"
-version = "0.8.3"
+version = "0.8.4"
 
 repositories {
     mavenCentral()

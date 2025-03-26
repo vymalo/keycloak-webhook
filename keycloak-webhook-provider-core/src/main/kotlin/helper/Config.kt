@@ -14,7 +14,7 @@ const val amqpVHostKey = "WEBHOOK_AMQP_VHOST"
 const val amqpExchangeKey = "WEBHOOK_AMQP_EXCHANGE"
 const val amqpSsl = "WEBHOOK_AMQP_SSL"
 
-private fun getConfig(key: String): String? = System.getenv(key) ?: System.getProperties().getProperty(key)
+private fun getConfig(key: String): String? = System.getenv(key) ?: System.getProperty(key)
 
 fun String.cf() = getConfig(this)
 fun String.bf(compare: String = "true") = this.cf() == compare

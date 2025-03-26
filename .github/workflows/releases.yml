@@ -3,7 +3,7 @@ on:
   push:
     branches:
       - '**'
-    tag:
+    tags:
       - '**'
 
 jobs:

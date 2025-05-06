@@ -11,6 +11,15 @@ x-keycloak-common-env: &keycloak-common-env
   KEYCLOAK_ADMIN: admin
   KEYCLOAK_ADMIN_PASSWORD: password
   KC_LOG_CONSOLE_COLOR: 'true'
+  
+  WEBHOOK_SYSLOG_PROTOCOL: udp
+  WEBHOOK_SYSLOG_HOSTNAME: keycloak
+  WEBHOOK_SYSLOG_APP_NAME: Keycloak
+  WEBHOOK_SYSLOG_FACILITY: SYSLOG
+  WEBHOOK_SYSLOG_SEVERITY: INFORMATIONAL
+  WEBHOOK_SYSLOG_SERVER_HOSTNAME: syslog-ng
+  WEBHOOK_SYSLOG_SERVER_PORT: 5514
+  WEBHOOK_SYSLOG_MESSAGE_FORMAT: RFC_3164
 
 x-keycloak-common-extra: &keycloak-common-extra
   entrypoint: /bin/sh
@@ -25,8 +34,11 @@ x-keycloak-common-extra: &keycloak-common-extra
     - ./keycloak-webhook-provider-core/build/libs:/tmp/libs-core:ro
     - ./keycloak-webhook-provider-amqp/build/libs:/tmp/libs-amqp:ro
     - ./keycloak-webhook-provider-http/build/libs:/tmp/libs-http:ro
+    - ./keycloak-webhook-provider-syslog/build/libs:/tmp/libs-syslog:ro
   links:
     - prism
+    - syslog-ng
+    - rabbitmq
 
 services:
   keycloak-21:
@@ -105,3 +117,18 @@ services:
       - /webhook.open-api.yml
     volumes:
       - ./openapi/webhook.open-api.yml:/webhook.open-api.yml
+    restart: unless-stopped
+
+  syslog-ng:
+    image: lscr.io/linuxserver/syslog-ng
+    environment:
+      - TZ=Etc/Berlin
+      - LOG_TO_STDOUT=true
+    volumes:
+#      - /path/to/syslog-ng/config:/config
+      - .docker/syslog/log:/var/log #optional
+    ports:
+      - "514:5514/udp"
+      - "601:6601/tcp"
+      - "6514:6514/tcp"
+    restart: unless-stopped

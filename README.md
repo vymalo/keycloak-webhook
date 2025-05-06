@@ -1,23 +1,23 @@
 # Keycloak Webhook Plugin
 
 A modular Keycloak event listener plugin that triggers webhooks whenever specific events (like login, registration, or
-logout) occur in Keycloak. This project leverages a multi-module design so you can choose which transport provider (HTTP
-or AMQP) to deploy based on your needs.
+logout) occur in Keycloak. This project leverages a multi-module design so you can choose which transport provider (HTTP,
+AMQP, or Syslog) to deploy based on your needs.
 
 | Keycloak Version | Plugin Version |
-|------------------|----------------|
-| 21               | ✅ 0.8.4        |
-| 22               | ✅ 0.8.4        |
-| 23               | ✅ 0.8.4        |
-| 24               | ✅ 0.8.4        |
-| 25               | ✅ 0.8.4        |
-| 26               | ✅ 0.8.4        |
+| ---------------- | -------------- |
+| 21               | ✅ 0.9.0       |
+| 22               | ✅ 0.9.0       |
+| 23               | ✅ 0.9.0       |
+| 24               | ✅ 0.9.0       |
+| 25               | ✅ 0.9.0       |
+| 26               | ✅ 0.9.0       |
 
 ---
 
 ## 1. What It Is
 
-The Keycloak Webhook Plugin consists of three modules:
+The Keycloak Webhook Plugin consists of four modules:
 
 - **Core Module (`keycloak-webhook-provider-core`)**  
   Contains common SPI interfaces, shared models, and helper utilities.
@@ -30,7 +30,10 @@ The Keycloak Webhook Plugin consists of three modules:
   Implements webhook notifications over HTTP. This provider uses OpenAPI-generated clients to ensure compliance with the
   target API.
 
-Keycloak uses Java’s `ServiceLoader` mechanism to conditionally load these providers at runtime if their JARs (and
+- **Syslog Provider (`keycloak-webhook-provider-syslog`)**  
+  Implements webhook notifications over Syslog (TCP/UDP). Supports RFC 3164 and RFC 5424 message formats.
+
+Keycloak uses Java's `ServiceLoader` mechanism to conditionally load these providers at runtime if their JARs (and
 dependencies) are available.
 
 ---
@@ -47,11 +50,12 @@ Download the latest release artifacts (shaded JARs) from the GitHub releases pag
 curl -L -o keycloak-webhook-provider-core.jar https://github.com/vymalo/keycloak-webhook/releases/download/v<version>/keycloak-webhook-provider-core-<version>-all.jar
 curl -L -o keycloak-webhook-provider-amqp.jar https://github.com/vymalo/keycloak-webhook/releases/download/v<version>/keycloak-webhook-provider-amqp-<version>-all.jar
 curl -L -o keycloak-webhook-provider-http.jar https://github.com/vymalo/keycloak-webhook/releases/download/v<version>/keycloak-webhook-provider-http-<version>-all.jar
+curl -L -o keycloak-webhook-provider-syslog.jar https://github.com/vymalo/keycloak-webhook/releases/download/v<version>/keycloak-webhook-provider-syslog-<version>-all.jar
 ```
 
 ### a. Docker
 
-When running Keycloak in Docker, mount the downloaded JARs into Keycloak’s providers directory. For example, in your
+When running Keycloak in Docker, mount the downloaded JARs into Keycloak's providers directory. For example, in your
 `docker-compose.yaml`:
 
 ```yaml
@@ -59,7 +63,7 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.1.3
     ports:
-      - '9100:9100'
+      - "9100:9100"
     environment:
       # HTTP Provider Configuration
       WEBHOOK_HTTP_BASE_PATH: "http://prism:4010"
@@ -73,13 +77,22 @@ services:
       WEBHOOK_AMQP_VHOST: "/"
       WEBHOOK_AMQP_EXCHANGE: keycloak
       WEBHOOK_AMQP_SSL: "no"
+      # Syslog Provider Configuration
+      WEBHOOK_SYSLOG_PROTOCOL: udp
+      WEBHOOK_SYSLOG_HOSTNAME: keycloak
+      WEBHOOK_SYSLOG_APP_NAME: Keycloak
+      WEBHOOK_SYSLOG_FACILITY: USER
+      WEBHOOK_SYSLOG_SEVERITY: INFORMATIONAL
+      WEBHOOK_SYSLOG_SERVER_HOSTNAME: syslog-ng
+      WEBHOOK_SYSLOG_SERVER_PORT: 5514
+      WEBHOOK_SYSLOG_MESSAGE_FORMAT: RFC_3164
       # Keycloak Admin Credentials
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: password
       KC_HTTP_PORT: 9100
-      KC_METRICS_ENABLED: 'true'
-      KC_LOG_CONSOLE_COLOR: 'true'
-      KC_HEALTH_ENABLED: 'true'
+      KC_METRICS_ENABLED: "true"
+      KC_LOG_CONSOLE_COLOR: "true"
+      KC_HEALTH_ENABLED: "true"
     entrypoint: /bin/sh
     command:
       - -c
@@ -89,14 +102,14 @@ services:
         cp /tmp/plugins/*.jar /opt/keycloak/providers
         /opt/keycloak/bin/kc.sh start-dev --import-realm
     volumes:
-      - ./plugins:/tmp/plugins:ro  # Place your downloaded JARs in this folder
+      - ./plugins:/tmp/plugins:ro # Place your downloaded JARs in this folder
       - ./.docker/keycloak-config/:/opt/keycloak/data/import/:ro
 ```
 
 ### b. Kubernetes
 
 In Kubernetes, you can use an init container to download the plugin JARs from GitHub artifacts and copy them into
-Keycloak’s providers folder. For example:
+Keycloak's providers folder. For example:
 
 ```yaml
 apiVersion: apps/v1
@@ -115,7 +128,7 @@ spec:
     spec:
       volumes:
         - name: providers-volume
-          emptyDir: { }
+          emptyDir: {}
       initContainers:
         - name: download-plugins
           image: curlimages/curl:8.1.2
@@ -128,6 +141,7 @@ spec:
               curl -L -o /plugins/keycloak-webhook-provider-core.jar https://github.com/vymalo/keycloak-webhook/releases/download/v<version>/keycloak-webhook-provider-core-<version>-all.jar
               curl -L -o /plugins/keycloak-webhook-provider-amqp.jar https://github.com/vymalo/keycloak-webhook/releases/download/v<version>/keycloak-webhook-provider-amqp-<version>-all.jar
               curl -L -o /plugins/keycloak-webhook-provider-http.jar https://github.com/vymalo/keycloak-webhook/releases/download/v<version>/keycloak-webhook-provider-http-<version>-all.jar
+              curl -L -o /plugins/keycloak-webhook-provider-syslog.jar https://github.com/vymalo/keycloak-webhook/releases/download/v<version>/keycloak-webhook-provider-syslog-<version>-all.jar
               cp /plugins/*.jar /providers/
           volumeMounts:
             - name: providers-volume
@@ -156,6 +170,12 @@ spec:
               value: "keycloak"
             - name: WEBHOOK_AMQP_SSL
               value: "no"
+            - name: WEBHOOK_SYSLOG_PROTOCOL
+              value: "udp"
+            - name: WEBHOOK_SYSLOG_SERVER_HOSTNAME
+              value: "syslog-ng"
+            - name: WEBHOOK_SYSLOG_SERVER_PORT
+              value: "5514"
           volumeMounts:
             - name: providers-volume
               mountPath: /opt/keycloak/providers
@@ -199,6 +219,32 @@ spec:
 - **`WEBHOOK_AMQP_SSL` (optional)**  
   `"yes"` or `"no"`, indicating if SSL is enabled.
 
+### Syslog Provider
+
+- **`WEBHOOK_SYSLOG_PROTOCOL`**  
+  `"TCP"` or `"UDP"` protocol for Syslog communication.
+
+- **`WEBHOOK_SYSLOG_HOSTNAME`**  
+  Hostname of the Keycloak instance.
+
+- **`WEBHOOK_SYSLOG_APP_NAME`**  
+  Application name for Syslog messages.
+
+- **`WEBHOOK_SYSLOG_FACILITY`**  
+  Syslog facility (e.g., USER, DAEMON, AUTH).
+
+- **`WEBHOOK_SYSLOG_SEVERITY`**  
+  Syslog severity level (e.g., INFORMATIONAL, WARNING, ERROR).
+
+- **`WEBHOOK_SYSLOG_SERVER_HOSTNAME`**  
+  Hostname of the Syslog server.
+
+- **`WEBHOOK_SYSLOG_SERVER_PORT`**  
+  Port of the Syslog server.
+
+- **`WEBHOOK_SYSLOG_MESSAGE_FORMAT`**  
+  `"RFC_3164"`, `"RFC_5424"` or `"RFC_5425"` message format.
+
 - **`WEBHOOK_EVENTS_TAKEN` (optional)**  
   A comma-separated list of Keycloak events (e.g., `"LOGIN,REGISTER,LOGOUT"`) that should trigger webhooks. If not
   specified, all events are processed.
@@ -216,27 +262,31 @@ graph TD
     C[Core Module]
     D[HTTP Provider]
     E[AMQP Provider]
-    F[External HTTP Server]
-    G[RabbitMQ Broker]
+    F[Syslog Provider]
+    G[External HTTP Server]
+    H[RabbitMQ Broker]
+    I[Syslog Server]
     A --> B
     B --> C
     C --> D
     C --> E
-    D --> F
-    E --> G
+    C --> F
+    D --> G
+    E --> H
+    F --> I
 ```
 
 - **Core Module:**  
   Provides common interfaces, models, and utilities.
 
 - **Provider Modules:**  
-  Implement specific webhook delivery mechanisms (HTTP or AMQP) and are conditionally loaded if their JARs are present.
+  Implement specific webhook delivery mechanisms (HTTP, AMQP, or Syslog) and are conditionally loaded if their JARs are present.
 
 - **ServiceLoader:**  
-  Uses Java’s SPI to discover and load the providers.
+  Uses Java's SPI to discover and load the providers.
 
 - **External Systems:**  
-  Webhook notifications are sent to an HTTP server or published to a RabbitMQ broker.
+  Webhook notifications are sent to an HTTP server, published to a RabbitMQ broker, or forwarded to a Syslog server.
 
 ---
 

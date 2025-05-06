@@ -84,7 +84,7 @@ services:
     <<: *keycloak-common-extra
 
   keycloak-26:
-    image: quay.io/keycloak/keycloak:26.1.2
+    image: quay.io/keycloak/keycloak:26.2.3
     ports:
       - '9026:9026'
     environment:

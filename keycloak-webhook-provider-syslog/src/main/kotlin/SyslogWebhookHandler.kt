@@ -1,8 +1,5 @@
 package com.vymalo.keycloak.webhook
 
-import com.cloudbees.syslog.Facility
-import com.cloudbees.syslog.MessageFormat
-import com.cloudbees.syslog.Severity
 import com.cloudbees.syslog.sender.AbstractSyslogMessageSender
 import com.cloudbees.syslog.sender.TcpSyslogMessageSender
 import com.cloudbees.syslog.sender.UdpSyslogMessageSender
@@ -42,7 +39,7 @@ class SyslogWebhookHandler : WebhookHandler {
             messageSender.close()
         }.onFailure { logger.warn("Error closing channel", it) }
     }
-    
+
     override fun initHandler() {
         val syslogConfig = SyslogConfig.fromEnv()
 
@@ -51,7 +48,7 @@ class SyslogWebhookHandler : WebhookHandler {
             "UDP" -> UdpSyslogMessageSender()
             else -> throw RuntimeException("Protocol unknown ${syslogConfig.protocol}")
         }
-        
+
         messageSender.defaultMessageHostname = syslogConfig.serverHostname
         messageSender.defaultAppName = syslogConfig.appName
         messageSender.defaultFacility = syslogConfig.facility

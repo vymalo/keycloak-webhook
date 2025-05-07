@@ -24,7 +24,7 @@ data class SyslogConfig(
             severity = Severity.valueOf(syslogSeverity.cfe { Severity.INFORMATIONAL.name }),
             serverHostname = syslogServerHostname.cff(),
             serverPort = syslogServerPort.cff(),
-            messageFormat = MessageFormat.valueOf(syslogMessageFormat.cfe { MessageFormat.RFC_5424.name }),
+            messageFormat = MessageFormat.valueOf(syslogMessageFormat.cfe { MessageFormat.RFC_5425.name }),
         )
     }
 }

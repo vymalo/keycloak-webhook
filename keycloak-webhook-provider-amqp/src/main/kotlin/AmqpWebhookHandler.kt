@@ -123,6 +123,12 @@ class AmqpWebhookHandler : WebhookHandler {
 
         exchange = amqp.exchange
 
+        if (this::connection.isInitialized && this::channel.isInitialized && connection.isOpen && channel.isOpen) {
+            logger.debug("Connection is already open")
+            return
+        }
+
+
         connectionFactory = ConnectionFactory().apply {
             username = amqp.username
             password = amqp.password

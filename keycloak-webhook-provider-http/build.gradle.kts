@@ -2,7 +2,7 @@ import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 plugins {
     kotlin("jvm")
-    id("org.openapi.generator") version "7.13.0"
+    id("org.openapi.generator") version "7.15.0"
     id("com.github.johnrengelman.shadow") version "8.1.1"
 }
 

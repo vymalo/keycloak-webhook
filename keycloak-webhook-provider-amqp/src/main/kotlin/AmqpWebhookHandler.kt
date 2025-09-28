@@ -55,12 +55,6 @@ class AmqpWebhookHandler : WebhookHandler {
     companion object {
         const val PROVIDER_ID = "webhook-amqp"
 
-        private const val DEFAULT_HEARTBEAT_SECONDS = 30
-        private const val DEFAULT_NETWORK_RECOVERY_MS = 5_000
-
-        // Buffer capacity: keep the last N messages; on overflow, drop oldest.
-        private const val BUFFER_CAPACITY = 1_000
-
         // Backoff limits for reconnect
         private val BACKOFF_INITIAL = 250L
         private val BACKOFF_MAX = 2_000L
@@ -88,8 +82,19 @@ class AmqpWebhookHandler : WebhookHandler {
             @Volatile var channel: Channel? = null
             @Volatile var exchange: String? = null
             @Volatile var factory: ConnectionFactory? = null
+            @Volatile var config: AmqpConfig? = null
 
-            private val queue = LinkedBlockingDeque<PublishTask>(BUFFER_CAPACITY)
+            // Buffer capacity: keep the last N messages; on overflow, drop oldest.
+            // We instantiate this after loading config so capacity is dynamic.
+            // TODO Thinking about: Avoid poison message starving the publisher queue
+            // Current implementation could run into delivery problem on corrupt payload
+            // But uppon reaching the buffer limit, the oldest message would get ejected
+            // thus fixing the corrupt message problem
+            // I we add a tryCount hadler we must make sure to only increment on actual problems
+            // with the payload, otherwise we could eject the messages this buffer was aimed
+            // to keep, until the connection stabilises.
+            private lateinit var queue: LinkedBlockingDeque<PublishTask>
+
             private val publisherThreadStarted = AtomicBoolean(false)
             val initialized = AtomicBoolean(false)
             private val stopping = AtomicBoolean(false)
@@ -109,28 +114,41 @@ class AmqpWebhookHandler : WebhookHandler {
                     if (initialized.get()) return
 
                     val amqp = AmqpConfig.fromEnv()
+                    config = amqp
                     exchange = amqp.exchange
+
+                    // Build queue with configured capacity
+                    queue = LinkedBlockingDeque(amqp.bufferCapacity)
 
                     factory = ConnectionFactory().apply {
                         username = amqp.username
                         password = amqp.password
                         virtualHost = amqp.vHost
-                        host = amqp.host
-                        port = amqp.port.toInt()
+
                         // Keepalive & timeouts
-                        requestedHeartbeat = DEFAULT_HEARTBEAT_SECONDS
+                        requestedHeartbeat = amqp.heartbeatSeconds
                         connectionTimeout = 10_000
                         handshakeTimeout = 10_000
                         shutdownTimeout = 5_000
+
                         // Resiliency
                         isAutomaticRecoveryEnabled = true
                         isTopologyRecoveryEnabled = true
-                        networkRecoveryInterval = DEFAULT_NETWORK_RECOVERY_MS.toLong()
+                        networkRecoveryInterval = amqp.networkRecoveryMs
                         if (amqp.ssl) useSslProtocol()
                     }
 
                     startPublisherThread()
                     initialized.set(true)
+
+                    logger.info(
+                        "AMQP init: hosts={} vhost={} heartbeat={}s networkRecoveryMs={} bufferCapacity={}",
+                        amqp.addresses.joinToString(",") { "${it.host}:${it.port}" },
+                        amqp.vHost,
+                        amqp.heartbeatSeconds,
+                        amqp.networkRecoveryMs,
+                        amqp.bufferCapacity
+                    )
                 }
             }
 
@@ -174,7 +192,8 @@ class AmqpWebhookHandler : WebhookHandler {
                     Thread(r, "amqp-publisher").apply { isDaemon = true }
                 }
                 tf.newThread { publisherLoop() }.start()
-                logger.info("AMQP publisher thread started (buffer capacity={})", BUFFER_CAPACITY)
+                val cap = if (this::queue.isInitialized) queue.remainingCapacity() + queue.size else -1
+                logger.info("AMQP publisher thread started (buffer capacity={})", cap)
             }
 
             /**
@@ -233,19 +252,25 @@ class AmqpWebhookHandler : WebhookHandler {
 
             private fun ensureConnected() {
                 val f = factory ?: error("AMQP ConnectionFactory not initialized")
+                val amqp = config ?: error("AMQP config not initialized")
                 if (connection?.isOpen == true && channel?.isOpen == true) return
 
                 // Close any half-open remnants
                 runCatching { if (channel?.isOpen == true) channel?.close() }
                 runCatching { if (connection?.isOpen == true) connection?.close() }
 
-                // Open fresh connection & channel
-                connection = f.newConnection("keycloak-webhook")
+                // Open fresh connection & channel (cluster-aware)
+                connection = f.newConnection(amqp.addresses.asList(), "keycloak-webhook")
                 wireConnectionListeners(connection!!, f)
                 channel = connection!!.createChannel()
+
                 logger.info(
-                    "AMQP connected: host={} vhost={} heartbeat={}s autoRecovery={} topologyRecovery={}",
-                    f.host, f.virtualHost, f.requestedHeartbeat, f.isAutomaticRecoveryEnabled, f.isTopologyRecoveryEnabled
+                    "AMQP connected: hosts={} vhost={} heartbeat={}s autoRecovery={} topologyRecovery={}",
+                    amqp.addresses.joinToString(",") { "${it.host}:${it.port}" },
+                    f.virtualHost,
+                    f.requestedHeartbeat,
+                    f.isAutomaticRecoveryEnabled,
+                    f.isTopologyRecoveryEnabled
                 )
 
                 // --- egress: flush start log ---

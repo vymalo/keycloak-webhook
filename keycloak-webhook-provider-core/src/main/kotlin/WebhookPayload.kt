@@ -18,6 +18,9 @@ data class WebhookPayload(
     @SerializedName("realmId")
     val realmId: kotlin.String,
 
+    @SerializedName("realmName")
+    val realmName: kotlin.String? = null,
+
     @SerializedName("id")
     val id: kotlin.String? = null,
 

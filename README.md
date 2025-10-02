@@ -1,14 +1,18 @@
 # Keycloak Webhook Plugin
 
 A modular Keycloak event listener plugin that triggers webhooks whenever specific events (like login, registration, or
-logout) occur in Keycloak. This project leverages a multi-module design so you can choose which transport provider (HTTP,
+logout) occur in Keycloak. This project leverages a multi-module design so you can choose which transport provider (
+HTTP,
 AMQP, or Syslog) to deploy based on your needs.
 
 | Keycloak Version | Plugin Version |
-| ---------------- | -------------- |
-| 24               | ✅ 0.9.1       |
-| 25               | ✅ 0.9.1       |
-| 26               | ✅ 0.9.1       |
+|------------------|----------------|
+| 21               | ✅ 0.10.0-rc.1  |
+| 22               | ✅ 0.10.0-rc.1  |
+| 23               | ✅ 0.10.0-rc.1  |
+| 24               | ✅ 0.10.0-rc.1  |
+| 25               | ✅ 0.10.0-rc.1  |
+| 26               | ✅ 0.10.0-rc.1  |
 
 ---
 
@@ -58,7 +62,7 @@ When running Keycloak in Docker, mount the downloaded JARs into Keycloak's provi
 ```yaml
 services:
   keycloak:
-    image: quay.io/keycloak/keycloak:26.1.3
+    image: quay.io/keycloak/keycloak:26.4.0
     ports:
       - "9100:9100"
     environment:
@@ -125,7 +129,7 @@ spec:
     spec:
       volumes:
         - name: providers-volume
-          emptyDir: {}
+          emptyDir: { }
       initContainers:
         - name: download-plugins
           image: curlimages/curl:8.1.2
@@ -145,7 +149,7 @@ spec:
               mountPath: /providers
       containers:
         - name: keycloak
-          image: quay.io/keycloak/keycloak:26.1.3
+          image: quay.io/keycloak/keycloak:26.4.0
           env:
             - name: WEBHOOK_HTTP_BASE_PATH
               value: "http://prism:4010"
@@ -277,7 +281,8 @@ graph TD
   Provides common interfaces, models, and utilities.
 
 - **Provider Modules:**  
-  Implement specific webhook delivery mechanisms (HTTP, AMQP, or Syslog) and are conditionally loaded if their JARs are present.
+  Implement specific webhook delivery mechanisms (HTTP, AMQP, or Syslog) and are conditionally loaded if their JARs are
+  present.
 
 - **ServiceLoader:**  
   Uses Java's SPI to discover and load the providers.

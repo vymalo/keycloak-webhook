@@ -21,7 +21,7 @@ abstract class AbstractWebhookEventListenerFactory(
     WebhookHandler by delegate {
     private var takeList: Set<String>? = null
 
-    override fun getOperationalInfo() = mapOf("version" to "0.9.1")
+    override fun getOperationalInfo() = mapOf("version" to "0.10.0-rc.1")
 
     companion object {
         @JvmStatic
@@ -54,6 +54,7 @@ abstract class AbstractWebhookEventListenerFactory(
         event.id,
         event.time,
         event.realmId,
+        event.getEventRealmName(),
         event.clientId,
         event.userId,
         event.ipAddress,
@@ -68,6 +69,7 @@ abstract class AbstractWebhookEventListenerFactory(
         event.id,
         event.time,
         event.realmId,
+        event.getAdminEventRealmName(),
         event.authDetails?.clientId,
         event.authDetails?.userId,
         event.authDetails?.ipAddress,
@@ -82,6 +84,7 @@ abstract class AbstractWebhookEventListenerFactory(
         id: String,
         time: Long?,
         realmId: String,
+        realmName: String?,
         clientId: String?,
         userId: String?,
         ipAddress: String?,
@@ -102,6 +105,7 @@ abstract class AbstractWebhookEventListenerFactory(
             clientId = clientId,
             userId = userId,
             realmId = realmId,
+            realmName = realmName,
             ipAddress = ipAddress,
             type = type,
             details = details,

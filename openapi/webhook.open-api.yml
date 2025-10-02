@@ -9,7 +9,7 @@ info:
     email: dev@ssegning.com
   license:
     name: MIT
-  version: 0.9.1
+  version: 0.10.0-rc.1
 externalDocs:
   description: Find out more about calling setting up an external service to verify phone number
   url: https://blog.ssegning.com

@@ -2,12 +2,12 @@ import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 plugins {
     kotlin("jvm")
-    id("org.openapi.generator") version "7.15.0"
+    id("org.openapi.generator") version "7.16.0"
     id("com.github.johnrengelman.shadow") version "8.1.1"
 }
 
 group = "com.vymalo.keycloak.webhook"
-version = "0.9.1"
+version = "0.10.0-rc.1"
 
 repositories {
     mavenCentral()
@@ -18,7 +18,7 @@ dependencies {
 
     implementation(project(":keycloak-webhook-provider-core"))
 
-    implementation("org.keycloak", "keycloak-services", "26.1.3")
+    implementation("org.keycloak", "keycloak-services", "26.4.0")
 
     implementation("com.google.code.gson", "gson", "2.12.1")
     

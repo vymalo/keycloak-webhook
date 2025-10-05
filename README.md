@@ -81,6 +81,7 @@ services:
       WEBHOOK_AMQP_HEARTBEAT_SECONDS: "30"
       WEBHOOK_AMQP_WH_HANDLER_BUFFER_CAPACITY: "1000"
       WEBHOOK_AMQP_WH_HANDLER_INFLIGHT_CAPACITY: "1000"
+      WEBHOOK_AMQP_WH_HANDLER_CONFIRM_TIMEOUT_MS: "15000"
       # Syslog Provider Configuration
       WEBHOOK_SYSLOG_PROTOCOL: udp
       WEBHOOK_SYSLOG_HOSTNAME: keycloak
@@ -233,6 +234,9 @@ spec:
 
 - **`WEBHOOK_AMQP_WH_HANDLER_INFLIGHT_CAPACITY` (optional)**  
   Async confirm InFlight listener max size for unconfirmed messages (default `1000`).
+
+- **`WEBHOOK_AMQP_WH_HANDLER_CONFIRM_TIMEOUT_MS` (optional)**  
+  Async confirm InFlight listener timeout in milliseconds for unconfirmed messages (default `15000`).
 
 ### Syslog Provider
 

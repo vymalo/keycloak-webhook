@@ -16,17 +16,27 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentSkipListMap
 import java.util.concurrent.LinkedBlockingDeque
 import java.util.concurrent.ThreadFactory
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.LockSupport
 import kotlin.math.min
 
+/**
+ * Self-healing AMQP webhook handler with a bounded LRU buffer + async publisher confirms + watchdog.
+ * - Request thread enqueues (non-blocking) into a capacity-limited deque.
+ * - Background publisher thread drains the queue and handles reconnects.
+ * - Async confirms with an in-flight window (default 5k) provide at-least-once semantics with high throughput.
+ * - Confirm-timeout watchdog recycles the channel if the oldest unconfirmed publish exceeds a threshold.
+ */
 class AmqpWebhookHandler : WebhookHandler {
 
     override fun getId(): String = PROVIDER_ID
 
     override fun initHandler() = Shared.initOnce()
 
-    override fun close() { /* no-op; call Shared.shutdown() from a real shutdown hook if you add one */ }
+    override fun close() {
+        // Intentionally no-op; wire Shared.shutdown() from your factory/lifecycle if needed.
+    }
 
     override fun sendWebhook(request: WebhookPayload) {
         if (!Shared.initialized.get()) Shared.initOnce()
@@ -36,7 +46,9 @@ class AmqpWebhookHandler : WebhookHandler {
         val props = getMessageProps(request.javaClass.name)
 
         val ok = Shared.enqueue(PublishTask(Shared.exchange ?: "", routingKey, props, body))
-        if (!ok) logger.error("AMQP buffer rejected message even after LRU drop; message lost. rk={}", routingKey)
+        if (!ok) {
+            logger.error("AMQP buffer rejected message even after LRU drop; message lost. rk={}", routingKey)
+        }
     }
 
     companion object {
@@ -44,6 +56,8 @@ class AmqpWebhookHandler : WebhookHandler {
 
         private val BACKOFF_INITIAL = 250L
         private val BACKOFF_MAX = 2_000L
+        private const val THROTTLE_PARK_NS = 250_000L   // ~0.25ms
+        private const val ON_ERROR_PARK_NS = 200_000L   // ~0.2ms
 
         private val gson = Gson()
         private val logger = LoggerFactory.getLogger(AmqpWebhookHandler::class.java)
@@ -57,13 +71,14 @@ class AmqpWebhookHandler : WebhookHandler {
                 .contentType(MediaType.APPLICATION_JSON)
                 .contentEncoding("UTF-8")
                 .deliveryMode(2) // persistent
-                .messageId(UUID.randomUUID().toString()) // idempotency-friendly
+                .messageId(UUID.randomUUID().toString()) // for downstream idempotency
                 .build()
         }
 
         private fun genRoutingKey(request: WebhookPayload): String =
             "KC_CLIENT.${request.realmId}.${request.clientId ?: "xxx"}.${request.userId ?: "xxx"}.${request.type}"
 
+        // ---- Shared, process-wide publisher & AMQP state ----
         private object Shared {
             @Volatile var connection: Connection? = null
             @Volatile var channel: Channel? = null
@@ -71,22 +86,28 @@ class AmqpWebhookHandler : WebhookHandler {
             @Volatile var factory: ConnectionFactory? = null
             @Volatile var config: AmqpConfig? = null
 
+            // Buffer capacity: keep the last N messages; on overflow, drop oldest.
             private lateinit var queue: LinkedBlockingDeque<PublishTask>
 
             private val publisherThreadStarted = AtomicBoolean(false)
             val initialized = AtomicBoolean(false)
             private val stopping = AtomicBoolean(false)
 
+            // counters (for metrics/logs)
             @Volatile var droppedOldestCount: Long = 0
             @Volatile var publishFailures: Long = 0
             @Volatile var warnSampleRate: Long = 100
 
+            // flush logging/metrics (count on ACKs)
             @Volatile var flushing: Boolean = false
             @Volatile var lastFlushPlanned: Int = 0
             @Volatile var lastFlushedCount: Int = 0
 
-            private val inFlight = ConcurrentSkipListMap<Long, PublishTask>()
-            @Volatile private var inFlightCap: Int = 0
+            // async confirms: seqNo -> inflight entry (task + timestamp)
+            private data class InflightEntry(val task: PublishTask, val sentAtMs: Long)
+            private val inFlight = ConcurrentSkipListMap<Long, InflightEntry>()
+            @Volatile private var inFlightCap: Int = 1_000
+            @Volatile private var confirmTimeoutMs: Long = 15_000L
 
             fun initOnce() {
                 if (initialized.get()) return
@@ -99,18 +120,19 @@ class AmqpWebhookHandler : WebhookHandler {
 
                     queue = LinkedBlockingDeque(amqp.bufferCapacity)
                     warnSampleRate = kotlin.math.max(1, amqp.bufferCapacity / 10).toLong()
-
-                    // clamp inflight capacity
                     inFlightCap = amqp.inFlightCapacity.takeIf { it > 0 } ?: 1_000
+                    confirmTimeoutMs = amqp.confirmTimeoutMs.takeIf { it > 0 } ?: 15_000L
 
                     factory = ConnectionFactory().apply {
                         username = amqp.username
                         password = amqp.password
                         virtualHost = amqp.vHost
+                        // Keepalive & timeouts
                         requestedHeartbeat = amqp.heartbeatSeconds
                         connectionTimeout = 10_000
                         handshakeTimeout = 10_000
                         shutdownTimeout = 5_000
+                        // We manage reconnection & topology ourselves
                         isAutomaticRecoveryEnabled = false
                         isTopologyRecoveryEnabled = false
                         if (amqp.ssl) useSslProtocol()
@@ -120,12 +142,13 @@ class AmqpWebhookHandler : WebhookHandler {
                     initialized.set(true)
 
                     logger.info(
-                        "AMQP init: hosts={} vhost={} heartbeat={}s bufferCapacity={} maxInflight={}",
+                        "AMQP init: hosts={} vhost={} heartbeat={}s bufferCapacity={} maxInflight={} confirmTimeoutMs={}",
                         amqp.addresses.joinToString(",") { "${it.host}:${it.port}" },
                         amqp.vHost,
                         amqp.heartbeatSeconds,
                         amqp.bufferCapacity,
-                        inFlightCap
+                        inFlightCap,
+                        confirmTimeoutMs
                     )
                 }
             }
@@ -139,7 +162,7 @@ class AmqpWebhookHandler : WebhookHandler {
 
             /** Enqueue with LRU semantics: try insert; if full, drop oldest then insert. */
             fun enqueue(task: PublishTask): Boolean {
-                // fast path
+                // Fast path
                 if (queue.offerLast(task)) {
                     if (logger.isDebugEnabled) {
                         logger.debug("AMQP buffer ingress: size={} droppedTotal={}", queue.size, droppedOldestCount)
@@ -174,38 +197,60 @@ class AmqpWebhookHandler : WebhookHandler {
                 logger.info("AMQP publisher thread started (buffer capacity={})", cap)
             }
 
+            /**
+             * Main loop: keep connection/channel healthy, drain queue, handle reconnects.
+             * Uses async confirms with a bounded in-flight window and a confirm-timeout watchdog.
+             */
             private fun publisherLoop() {
                 var backoff = BACKOFF_INITIAL
-                var ensuredExchange = false
+                var lastWatchdogCheck = 0L
 
                 while (!stopping.get()) {
                     try {
                         ensureConnected()
-                        if (!ensuredExchange) {
-                            ensureExchange(exchange!!)
-                            ensuredExchange = true
-                        }
                         backoff = BACKOFF_INITIAL
 
-                        // throttle on in-flight window (micro-park to avoid busy spin)
+                        // Throttle on in-flight window (micro-park to avoid hot spin)
                         while (inFlight.size >= inFlightCap && !stopping.get()) {
-                            LockSupport.parkNanos(250_000) // ~0.25ms
+                            LockSupport.parkNanos(THROTTLE_PARK_NS)
                         }
 
-                        val task = queue.pollFirst(1, java.util.concurrent.TimeUnit.SECONDS) ?: continue
+                        // Watchdog: every ~50ms, check oldest unconfirmed age
+                        val now = System.currentTimeMillis()
+                        if (now - lastWatchdogCheck >= 50) {
+                            lastWatchdogCheck = now
+                            val oldest = inFlight.firstEntry()
+                            if (oldest != null) {
+                                val age = now - oldest.value.sentAtMs
+                                if (age >= confirmTimeoutMs) {
+                                    logger.warn(
+                                        "Publisher confirms stuck (oldest seq={} age={}ms >= {}ms). Recycling channel…",
+                                        oldest.key, age, confirmTimeoutMs
+                                    )
+                                    repairChannelOrConnection() // will requeue all inFlight
+                                    LockSupport.parkNanos(300_000) // ~0.3ms
+                                    continue
+                                }
+                            }
+                        }
+
+                        // Block waiting for a task; small timeout so we can react to stop/repair
+                        val task = queue.pollFirst(1, TimeUnit.SECONDS) ?: continue
 
                         var seqNo: Long? = null
                         try {
                             seqNo = channel!!.nextPublishSeqNo
-                            inFlight[seqNo!!] = task
+                            inFlight[seqNo!!] = InflightEntry(task, System.currentTimeMillis())
                             channel!!.basicPublish(task.exchange, task.routingKey, task.props, task.body)
+                            // ACK/NACK handled by listener
+
                         } catch (ex: Exception) {
                             publishFailures++
                             logger.warn("Publish attempt failed ({} total). Will repair and retry once: {}", publishFailures, ex.message, ex)
-                            seqNo?.let { inFlight.remove(it) } // remove by key (explicit)
+                            seqNo?.let { inFlight.remove(it) } // explicit key removal
                             queue.offerFirst(task) // preserve order
                             repairChannelOrConnection()
-                            LockSupport.parkNanos(200_000) // ~0.2ms
+                            LockSupport.parkNanos(ON_ERROR_PARK_NS)
                         }
                     } catch (t: Throwable) {
                         logger.warn("AMQP publisher loop fault: {}. Backing off {} ms", t.message, backoff, t)
@@ -232,6 +277,8 @@ class AmqpWebhookHandler : WebhookHandler {
                 channel!!.confirmSelect()
                 installConfirmListener(channel!!)
 
+                ensureExchange(exchange!!)
+
                 logger.info(
                     "AMQP connected: hosts={} vhost={} heartbeat={}s autoRecovery={} topologyRecovery={}",
                     amqp.addresses.joinToString(",") { "${it.host}:${it.port}" },
@@ -252,6 +299,7 @@ class AmqpWebhookHandler : WebhookHandler {
 
             private fun installConfirmListener(ch: Channel) {
                 ch.addConfirmListener(
+                    // ACK
                     { deliveryTag, multiple ->
                         if (multiple) {
                             val head = inFlight.headMap(deliveryTag, true)
@@ -268,20 +316,21 @@ class AmqpWebhookHandler : WebhookHandler {
                             }
                         }
                     },
+                    // NACK
                     { deliveryTag, multiple ->
                         if (multiple) {
                             val head = inFlight.headMap(deliveryTag, true)
-                            val entries = head.entries.toList().asReversed()
+                            val entries = head.values.toList().asReversed()
+                            head.clear()
                             var requeued = 0
-                            for ((_, task) in entries) {
-                                queue.offerFirst(task)
+                            for (entry in entries) {
+                                queue.offerFirst(entry.task)
                                 requeued++
                             }
-                            head.clear()
                             logger.warn("Broker NACKed (multiple up to {}): requeued {} messages", deliveryTag, requeued)
                         } else {
                             inFlight.remove(deliveryTag)?.let {
-                                queue.offerFirst(it)
+                                queue.offerFirst(it.task)
                                 logger.warn("Broker NACKed deliveryTag {}: requeued 1 message", deliveryTag)
                             }
                         }
@@ -305,7 +354,7 @@ class AmqpWebhookHandler : WebhookHandler {
                 if (inFlight.isEmpty()) return
                 val snapshot = inFlight.descendingMap().values.toList()
                 inFlight.clear()
-                for (task in snapshot) queue.offerFirst(task)
+                for (entry in snapshot) queue.offerFirst(entry.task)
                 logger.warn("Requeued {} unconfirmed messages after channel/connection drop", snapshot.size)
             }
 
@@ -317,6 +366,8 @@ class AmqpWebhookHandler : WebhookHandler {
                     channel = conn.createChannel().also {
                         it.confirmSelect()
                         installConfirmListener(it)
+                        // ensure exchange again on rebuilt channel
+                        ensureExchange(exchange!!)
                     }
                     return
                 }

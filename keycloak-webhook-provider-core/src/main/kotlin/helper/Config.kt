@@ -17,6 +17,7 @@ const val amqpSslKey = "WEBHOOK_AMQP_SSL"
 const val amqpHeartbeatSecondsKey = "WEBHOOK_AMQP_HEARTBEAT_SECONDS"
 const val amqpWhHandlerBufferCapacityKey = "WEBHOOK_AMQP_WH_HANDLER_BUFFER_CAPACITY"
 const val amqpWhHandlerInFlightCapacityKey = "WEBHOOK_AMQP_WH_HANDLER_INFLIGHT_CAPACITY"
+const val amqpWhHandlerConfirmTimeoutMsKey = "WEBHOOK_AMQP_WH_HANDLER_CONFIRM_TIMEOUT_MS"
 
 const val syslogProtocol = "WEBHOOK_SYSLOG_PROTOCOL"
 const val syslogHostname = "WEBHOOK_SYSLOG_HOSTNAME"

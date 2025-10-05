@@ -12,7 +12,8 @@ data class AmqpConfig(
     val addresses: Array<Address>,
     val heartbeatSeconds: Int,
     val bufferCapacity: Int,
-    val inFlightCapacity: Int
+    val inFlightCapacity: Int,
+    val confirmTimeoutMs: Long
 ) {
     companion object {
         private const val DEFAULT_PORT = 5672
@@ -21,6 +22,7 @@ data class AmqpConfig(
         private const val DEFAULT_NETWORK_RECOVERY_MS = 5_000L
         private const val DEFAULT_BUFFER_CAPACITY = 1_000
         private const val DEFAULT_INFLIGHT_CAPACITY = 1_000
+        private const val DEFAULT_CONFIRM_TIMEOUT_MS = 15_000L
 
         fun fromEnv(): AmqpConfig {
             val username = amqpUsernameKey.cff()
@@ -41,6 +43,10 @@ data class AmqpConfig(
                 .cfe { DEFAULT_INFLIGHT_CAPACITY.toString() }
                 .toIntOrNull() ?: DEFAULT_INFLIGHT_CAPACITY
 
+            val confirmTimeoutMs = amqpWhHandlerConfirmTimeoutMsKey
+                .cfe { DEFAULT_CONFIRM_TIMEOUT_MS.toString() }
+                .toLongOrNull() ?: DEFAULT_CONFIRM_TIMEOUT_MS
+
             val addresses: Array<Address> = when (val addrs = amqpAdressesKey.cf()) {
                 null, "", " " -> {
                     val host = amqpHostKey.cff()
@@ -59,7 +65,8 @@ data class AmqpConfig(
                 addresses = addresses,
                 heartbeatSeconds = heartbeatSeconds,
                 bufferCapacity = bufferCapacity,
-                inFlightCapacity = inFlightCapacity
+                inFlightCapacity = inFlightCapacity,
+                confirmTimeoutMs = confirmTimeoutMs
             )
         }
     }

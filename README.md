@@ -79,8 +79,8 @@ services:
       WEBHOOK_AMQP_SSL: "false"
       # Optional AMQP tuning (with defaults shown)
       WEBHOOK_AMQP_HEARTBEAT_SECONDS: "30"
-      WEBHOOK_AMQP_NETWORK_RECOVERY_MILLISECONDS: "5000"
       WEBHOOK_AMQP_WH_HANDLER_BUFFER_CAPACITY: "1000"
+      WEBHOOK_AMQP_WH_HANDLER_INFLIGHT_CAPACITY: "1000"
       # Syslog Provider Configuration
       WEBHOOK_SYSLOG_PROTOCOL: udp
       WEBHOOK_SYSLOG_HOSTNAME: keycloak
@@ -228,11 +228,11 @@ spec:
 - **`WEBHOOK_AMQP_HEARTBEAT_SECONDS` (optional)**  
   Connection heartbeat in seconds (default `30`).
 
-- **`WEBHOOK_AMQP_NETWORK_RECOVERY_MILLISECONDS` (optional)**  
-  Auto-recovery backoff interval in milliseconds (default `5000`).
-
 - **`WEBHOOK_AMQP_WH_HANDLER_BUFFER_CAPACITY` (optional)**  
   In-memory LRU buffer size for pending messages (default `1000`; drops oldest when full).
+
+- **`WEBHOOK_AMQP_WH_HANDLER_INFLIGHT_CAPACITY` (optional)**  
+  Async confirm InFlight listener max size for unconfirmed messages (default `1000`).
 
 ### Syslog Provider
 

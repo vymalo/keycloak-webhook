@@ -38,5 +38,22 @@
         }
       ]
     }
+  ],
+  "clients": [
+    {
+      "clientId": "cli-app",
+      "name": "CLI App (ROPC)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "CHANGE_ME_SECRET",
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "bearerOnly": false,
+      "redirectUris": [],
+      "webOrigins": []
+    }
   ]
 }

@@ -12,31 +12,21 @@ import com.vymalo.keycloak.webhook.models.AmqpConfig
 import org.keycloak.utils.MediaType
 import org.slf4j.LoggerFactory
 import java.nio.charset.StandardCharsets
-import java.time.Duration
+import java.util.UUID
+import java.util.concurrent.ConcurrentSkipListMap
 import java.util.concurrent.LinkedBlockingDeque
 import java.util.concurrent.ThreadFactory
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.locks.LockSupport
 import kotlin.math.min
 
-/**
- * Self-healing AMQP webhook handler with a bounded LRU buffer.
- * - Request thread enqueues (non-blocking) into a capacity-limited deque.
- * - Background publisher thread drains the queue and handles reconnects.
- */
 class AmqpWebhookHandler : WebhookHandler {
 
     override fun getId(): String = PROVIDER_ID
 
-    override fun initHandler() {
-        Shared.initOnce()
-    }
+    override fun initHandler() = Shared.initOnce()
 
-    override fun close() {
-        // Intentionally no-op: this handler can be short-lived; the Shared publisher lives for the process.
-        // TODO
-        // If you have a Factory with a real shutdown hook, call Shared.shutdown() there.
-        // So far I couldn't isolate a good candiate for that. AmqpWebhookFactory is per request as well.
-    }
+    override fun close() { /* no-op; call Shared.shutdown() from a real shutdown hook if you add one */ }
 
     override fun sendWebhook(request: WebhookPayload) {
         if (!Shared.initialized.get()) Shared.initOnce()
@@ -46,16 +36,12 @@ class AmqpWebhookHandler : WebhookHandler {
         val props = getMessageProps(request.javaClass.name)
 
         val ok = Shared.enqueue(PublishTask(Shared.exchange ?: "", routingKey, props, body))
-        if (!ok) {
-            // This should not happen because enqueue drops LRU and then inserts, but keep a guard.
-            logger.error("AMQP buffer rejected message even after LRU drop; message lost. rk={}", routingKey)
-        }
+        if (!ok) logger.error("AMQP buffer rejected message even after LRU drop; message lost. rk={}", routingKey)
     }
 
     companion object {
         const val PROVIDER_ID = "webhook-amqp"
 
-        // Backoff limits for reconnect
         private val BACKOFF_INITIAL = 250L
         private val BACKOFF_MAX = 2_000L
 
@@ -70,13 +56,14 @@ class AmqpWebhookHandler : WebhookHandler {
                 .headers(headers)
                 .contentType(MediaType.APPLICATION_JSON)
                 .contentEncoding("UTF-8")
+                .deliveryMode(2) // persistent
+                .messageId(UUID.randomUUID().toString()) // idempotency-friendly
                 .build()
         }
 
         private fun genRoutingKey(request: WebhookPayload): String =
             "KC_CLIENT.${request.realmId}.${request.clientId ?: "xxx"}.${request.userId ?: "xxx"}.${request.type}"
 
-        // ---- Shared, process-wide publisher & AMQP state ----
         private object Shared {
             @Volatile var connection: Connection? = null
             @Volatile var channel: Channel? = null
@@ -84,29 +71,22 @@ class AmqpWebhookHandler : WebhookHandler {
             @Volatile var factory: ConnectionFactory? = null
             @Volatile var config: AmqpConfig? = null
 
-            // Buffer capacity: keep the last N messages; on overflow, drop oldest.
-            // We instantiate this after loading config so capacity is dynamic.
-            // TODO Thinking about: Avoid poison message starving the publisher queue
-            // Current implementation could run into delivery problem on corrupt payload
-            // But uppon reaching the buffer limit, the oldest message would get ejected
-            // thus fixing the corrupt message problem
-            // I we add a tryCount hadler we must make sure to only increment on actual problems
-            // with the payload, otherwise we could eject the messages this buffer was aimed
-            // to keep, until the connection stabilises.
             private lateinit var queue: LinkedBlockingDeque<PublishTask>
 
             private val publisherThreadStarted = AtomicBoolean(false)
             val initialized = AtomicBoolean(false)
             private val stopping = AtomicBoolean(false)
 
-            // counters (for metrics/logs)
             @Volatile var droppedOldestCount: Long = 0
             @Volatile var publishFailures: Long = 0
+            @Volatile var warnSampleRate: Long = 100
 
-            // ---- added for flush logging/metrics ----
             @Volatile var flushing: Boolean = false
             @Volatile var lastFlushPlanned: Int = 0
             @Volatile var lastFlushedCount: Int = 0
+
+            private val inFlight = ConcurrentSkipListMap<Long, PublishTask>()
+            @Volatile private var inFlightCap: Int = 0
 
             fun initOnce() {
                 if (initialized.get()) return
@@ -117,24 +97,22 @@ class AmqpWebhookHandler : WebhookHandler {
                     config = amqp
                     exchange = amqp.exchange
 
-                    // Build queue with configured capacity
                     queue = LinkedBlockingDeque(amqp.bufferCapacity)
+                    warnSampleRate = kotlin.math.max(1, amqp.bufferCapacity / 10).toLong()
+
+                    // clamp inflight capacity
+                    inFlightCap = amqp.inFlightCapacity.takeIf { it > 0 } ?: 1_000
 
                     factory = ConnectionFactory().apply {
                         username = amqp.username
                         password = amqp.password
                         virtualHost = amqp.vHost
-
-                        // Keepalive & timeouts
                         requestedHeartbeat = amqp.heartbeatSeconds
                         connectionTimeout = 10_000
                         handshakeTimeout = 10_000
                         shutdownTimeout = 5_000
-
-                        // Resiliency
-                        isAutomaticRecoveryEnabled = true
-                        isTopologyRecoveryEnabled = true
-                        networkRecoveryInterval = amqp.networkRecoveryMs
+                        isAutomaticRecoveryEnabled = false
+                        isTopologyRecoveryEnabled = false
                         if (amqp.ssl) useSslProtocol()
                     }
 
@@ -142,12 +120,12 @@ class AmqpWebhookHandler : WebhookHandler {
                     initialized.set(true)
 
                     logger.info(
-                        "AMQP init: hosts={} vhost={} heartbeat={}s networkRecoveryMs={} bufferCapacity={}",
+                        "AMQP init: hosts={} vhost={} heartbeat={}s bufferCapacity={} maxInflight={}",
                         amqp.addresses.joinToString(",") { "${it.host}:${it.port}" },
                         amqp.vHost,
                         amqp.heartbeatSeconds,
-                        amqp.networkRecoveryMs,
-                        amqp.bufferCapacity
+                        amqp.bufferCapacity,
+                        inFlightCap
                     )
                 }
             }
@@ -155,19 +133,17 @@ class AmqpWebhookHandler : WebhookHandler {
             fun shutdown() {
                 if (!publisherThreadStarted.get()) return
                 stopping.set(true)
-                // best-effort close
                 runCatching { channel?.close() }
                 runCatching { connection?.close() }
             }
 
-            /**
-             * Enqueue with LRU semantics: drop oldest if full, then insert newest.
-             */
+            /** Enqueue with LRU semantics: try insert; if full, drop oldest then insert. */
             fun enqueue(task: PublishTask): Boolean {
-                // Fast path
+                // fast path
                 if (queue.offerLast(task)) {
-                    // --- ingress log ---
-                    logger.info("AMQP buffer ingress: size={} droppedTotal={}", queue.size, droppedOldestCount)
+                    if (logger.isDebugEnabled) {
+                        logger.debug("AMQP buffer ingress: size={} droppedTotal={}", queue.size, droppedOldestCount)
+                    }
                     return true
                 }
 
@@ -175,30 +151,29 @@ class AmqpWebhookHandler : WebhookHandler {
                 val dropped = queue.pollFirst()
                 if (dropped != null) {
                     droppedOldestCount++
-                    logger.warn("AMQP buffer full: dropped oldest (LRU). droppedTotal={}", droppedOldestCount)
+                    if (droppedOldestCount % warnSampleRate == 0L || droppedOldestCount == 1L) {
+                        logger.warn(
+                            "AMQP buffer full: dropped oldest (LRU). droppedTotal={} sampleRate={} (every {} drops)",
+                            droppedOldestCount, warnSampleRate, warnSampleRate
+                        )
+                    }
                 }
-                // Try once more
+
                 val accepted = queue.offerLast(task)
-                if (accepted) {
-                    // --- ingress log after LRU drop ---
-                    logger.info("AMQP buffer ingress: DROPPED_OLDEST size={} droppedTotal={}", queue.size, droppedOldestCount)
+                if (accepted && logger.isDebugEnabled) {
+                    logger.debug("AMQP buffer ingress after drop: size={} droppedTotal={}", queue.size, droppedOldestCount)
                 }
                 return accepted
             }
 
             private fun startPublisherThread() {
                 if (!publisherThreadStarted.compareAndSet(false, true)) return
-                val tf = ThreadFactory { r ->
-                    Thread(r, "amqp-publisher").apply { isDaemon = true }
-                }
+                val tf = ThreadFactory { r -> Thread(r, "amqp-publisher").apply { isDaemon = true } }
                 tf.newThread { publisherLoop() }.start()
                 val cap = if (this::queue.isInitialized) queue.remainingCapacity() + queue.size else -1
                 logger.info("AMQP publisher thread started (buffer capacity={})", cap)
             }
 
-            /**
-             * Main loop: keep connection/channel healthy, drain queue, on failure repair & retry.
-             */
             private fun publisherLoop() {
                 var backoff = BACKOFF_INITIAL
                 var ensuredExchange = false
@@ -210,44 +185,35 @@ class AmqpWebhookHandler : WebhookHandler {
                             ensureExchange(exchange!!)
                             ensuredExchange = true
                         }
-                        backoff = BACKOFF_INITIAL // reset backoff after a healthy connect
+                        backoff = BACKOFF_INITIAL
 
-                        // Block waiting for a task; small timeout so we can react to stop/repair
-                        val task = queue.pollFirst(1, java.util.concurrent.TimeUnit.SECONDS)
-                        if (task == null) continue
+                        // throttle on in-flight window (micro-park to avoid busy spin)
+                        while (inFlight.size >= inFlightCap && !stopping.get()) {
+                            LockSupport.parkNanos(250_000) // ~0.25ms
+                        }
 
+                        val task = queue.pollFirst(1, java.util.concurrent.TimeUnit.SECONDS) ?: continue
+
+                        var seqNo: Long? = null
                         try {
+                            seqNo = channel!!.nextPublishSeqNo
+                            inFlight[seqNo!!] = task
                             channel!!.basicPublish(task.exchange, task.routingKey, task.props, task.body)
-
-                            // --- egress counting when flushing after reconnect ---
-                            if (flushing) {
-                                lastFlushedCount++
-                                val remaining = queue.size
-                                if (remaining == 0 || lastFlushedCount >= lastFlushPlanned) {
-                                    logger.info("AMQP flush complete: published {} messages", lastFlushedCount)
-                                    flushing = false
-                                    lastFlushPlanned = 0
-                                    lastFlushedCount = 0
-                                    resetMetricsAfterFlush()
-                                }
-                            }
                         } catch (ex: Exception) {
                             publishFailures++
-                            logger.warn("Publish failed ({} total). Will repair and retry once: {}", publishFailures, ex.message, ex)
-                            // Requeue to the front to preserve order for the failing message
-                            queue.offerFirst(task)
+                            logger.warn("Publish attempt failed ({} total). Will repair and retry once: {}", publishFailures, ex.message, ex)
+                            seqNo?.let { inFlight.remove(it) } // remove by key (explicit)
+                            queue.offerFirst(task) // preserve order
                             repairChannelOrConnection()
-                            // short sleep to avoid hot loop if broker just closed us
-                            Thread.sleep(100)
+                            LockSupport.parkNanos(200_000) // ~0.2ms
                         }
                     } catch (t: Throwable) {
-                        // Connection-level problem or unexpected error. Back off and retry.
                         logger.warn("AMQP publisher loop fault: {}. Backing off {} ms", t.message, backoff, t)
                         sleepQuiet(backoff)
                         backoff = min(backoff * 2, BACKOFF_MAX)
                     }
                 }
-                logger.info("AMQP publisher thread stopping. queueSize={}", queue.size)
+                logger.info("AMQP publisher thread stopping. queueSize={} inFlight={}", queue.size, inFlight.size)
             }
 
             private fun ensureConnected() {
@@ -255,14 +221,16 @@ class AmqpWebhookHandler : WebhookHandler {
                 val amqp = config ?: error("AMQP config not initialized")
                 if (connection?.isOpen == true && channel?.isOpen == true) return
 
-                // Close any half-open remnants
-                runCatching { if (channel?.isOpen == true) channel?.close() }
-                runCatching { if (connection?.isOpen == true) connection?.close() }
+                runCatching { channel?.close() }
+                runCatching { connection?.close() }
+                requeueAllInFlight()
 
-                // Open fresh connection & channel (cluster-aware)
                 connection = f.newConnection(amqp.addresses.asList(), "keycloak-webhook")
                 wireConnectionListeners(connection!!, f)
                 channel = connection!!.createChannel()
+
+                channel!!.confirmSelect()
+                installConfirmListener(channel!!)
 
                 logger.info(
                     "AMQP connected: hosts={} vhost={} heartbeat={}s autoRecovery={} topologyRecovery={}",
@@ -273,7 +241,6 @@ class AmqpWebhookHandler : WebhookHandler {
                     f.isTopologyRecoveryEnabled
                 )
 
-                // --- egress: flush start log ---
                 val pending = queue.size
                 if (pending > 0) {
                     flushing = true
@@ -283,33 +250,100 @@ class AmqpWebhookHandler : WebhookHandler {
                 }
             }
 
+            private fun installConfirmListener(ch: Channel) {
+                ch.addConfirmListener(
+                    { deliveryTag, multiple ->
+                        if (multiple) {
+                            val head = inFlight.headMap(deliveryTag, true)
+                            val acked = head.size
+                            head.clear()
+                            if (flushing) {
+                                lastFlushedCount += acked
+                                maybeFinishFlush()
+                            }
+                        } else {
+                            if (inFlight.remove(deliveryTag) != null && flushing) {
+                                lastFlushedCount += 1
+                                maybeFinishFlush()
+                            }
+                        }
+                    },
+                    { deliveryTag, multiple ->
+                        if (multiple) {
+                            val head = inFlight.headMap(deliveryTag, true)
+                            val entries = head.entries.toList().asReversed()
+                            var requeued = 0
+                            for ((_, task) in entries) {
+                                queue.offerFirst(task)
+                                requeued++
+                            }
+                            head.clear()
+                            logger.warn("Broker NACKed (multiple up to {}): requeued {} messages", deliveryTag, requeued)
+                        } else {
+                            inFlight.remove(deliveryTag)?.let {
+                                queue.offerFirst(it)
+                                logger.warn("Broker NACKed deliveryTag {}: requeued 1 message", deliveryTag)
+                            }
+                        }
+                    }
+                )
+            }
+
+            private fun maybeFinishFlush() {
+                if (!flushing) return
+                val remaining = queue.size
+                if (remaining == 0 || lastFlushedCount >= lastFlushPlanned) {
+                    logger.info("AMQP flush complete: published+ACKed {} messages", lastFlushedCount)
+                    flushing = false
+                    lastFlushPlanned = 0
+                    lastFlushedCount = 0
+                    resetMetricsAfterFlush()
+                }
+            }
+
+            private fun requeueAllInFlight() {
+                if (inFlight.isEmpty()) return
+                val snapshot = inFlight.descendingMap().values.toList()
+                inFlight.clear()
+                for (task in snapshot) queue.offerFirst(task)
+                logger.warn("Requeued {} unconfirmed messages after channel/connection drop", snapshot.size)
+            }
+
             private fun repairChannelOrConnection() {
-                // Try cheap path first: just rebuild channel if conn is open
                 val conn = connection
                 if (conn != null && conn.isOpen) {
                     runCatching { channel?.close() }
-                    channel = conn.createChannel()
+                    requeueAllInFlight()
+                    channel = conn.createChannel().also {
+                        it.confirmSelect()
+                        installConfirmListener(it)
+                    }
                     return
                 }
-                // Otherwise do full reconnect
                 runCatching { channel?.close() }
                 runCatching { connection?.close() }
+                requeueAllInFlight()
                 ensureConnected()
             }
 
             private fun ensureExchange(name: String) {
-                // Try passive check, then declare a durable topic exchange if missing
                 val ch = channel ?: error("Channel not open")
-                runCatching { ch.exchangeDeclarePassive(name) }
-                    .onSuccess { logger.info("Verified exchange '{}' exists", name); return }
-                    .onFailure { ex ->
-                        logger.warn("Exchange '{}' not found (passive): {}. Attempting declare.", name, ex.message)
+
+                val passive = runCatching { ch.exchangeDeclarePassive(name) }
+                if (passive.isSuccess) {
+                    logger.info("Verified exchange '{}' exists", name)
+                } else {
+                    logger.warn("Exchange '{}' not found (passive): {}. Attempting declare.", name, passive.exceptionOrNull()?.message)
+                    val declared = runCatching { ch.exchangeDeclare(name, "topic", true, false, null) }
+                    if (declared.isSuccess) {
+                        logger.info("Declared exchange '{}' (durable topic).", name)
+                    } else {
+                        logger.error(
+                            "Failed to declare exchange '{}'. Publishing may fail. Reason: {}",
+                            name, declared.exceptionOrNull()?.message, declared.exceptionOrNull()
+                        )
                     }
-                runCatching { ch.exchangeDeclare(name, "topic", true, false, null) }
-                    .onSuccess { logger.info("Declared exchange '{}' (durable topic).", name) }
-                    .onFailure { ex2 ->
-                        logger.error("Failed to declare exchange '{}'. Publishing may fail. Reason: {}", name, ex2.message, ex2)
-                    }
+                }
             }
 
             private fun wireConnectionListeners(connection: Connection, factory: ConnectionFactory) {
@@ -336,7 +370,6 @@ class AmqpWebhookHandler : WebhookHandler {
                 try { Thread.sleep(ms) } catch (_: InterruptedException) {}
             }
 
-            // ---- reset counters after a successful flush ----
             private fun resetMetricsAfterFlush() {
                 droppedOldestCount = 0
                 publishFailures = 0

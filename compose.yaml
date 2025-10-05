@@ -16,8 +16,8 @@ x-keycloak-common-env: &keycloak-common-env
   WEBHOOK_AMQP_VHOST: "/"
   # Optional: tweak handler defaults (your AmqpConfig can read these)
   WEBHOOK_AMQP_HEARTBEAT_SECONDS: "30"
-  WEBHOOK_AMQP_NETWORK_RECOVERY_MILLISECONDS: "5000"
   WEBHOOK_AMQP_WH_HANDLER_BUFFER_CAPACITY: "1000"
+  WEBHOOK_AMQP_WH_HANDLER_INFLIGHT_CAPACITY: "1000"
 
   KEYCLOAK_ADMIN: admin
   KEYCLOAK_ADMIN_PASSWORD: password

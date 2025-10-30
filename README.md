@@ -189,7 +189,7 @@ spec:
 ### HTTP Provider
 
 - **`WEBHOOK_HTTP_BASE_PATH`**  
-  The endpoint URL where webhook requests are sent.
+  Coma-separated list of endpoint URLs where webhook requests are sent.
 
 - **`WEBHOOK_HTTP_AUTH_USERNAME` (optional)**  
   Basic auth username.

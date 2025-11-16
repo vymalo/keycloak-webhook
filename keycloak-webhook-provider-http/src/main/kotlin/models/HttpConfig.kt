@@ -5,13 +5,13 @@ import com.vymalo.keycloak.webhook.helper.*
 data class HttpConfig(
     val username: String?,
     val password: String?,
-    val baseUrl: String,
+    val baseUrls: List<String>,
 ) {
     companion object {
         fun fromEnv(): HttpConfig = HttpConfig(
             username = httpAuthUsernameKey.cf(),
             password = httpAuthPasswordKey.cf(),
-            baseUrl = httpBaseBathKey.cff()
+            baseUrls = httpBaseBathKey.cff().split(',')
         )
     }
 }

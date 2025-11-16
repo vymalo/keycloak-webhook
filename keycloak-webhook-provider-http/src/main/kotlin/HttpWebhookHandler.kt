@@ -7,14 +7,14 @@ import com.vymalo.keycloak.webhook.utils.toWebhookRequest
 import org.slf4j.LoggerFactory
 
 class HttpWebhookHandler : WebhookHandler {
-    private lateinit var webhookApi: WebhookApi
+    private lateinit var webhookApis: List<WebhookApi>
 
     companion object {
         private val logger = LoggerFactory.getLogger(HttpWebhookHandler::class.java)
         const val PROVIDER_ID = "webhook-http"
     }
 
-    override fun sendWebhook(request: WebhookPayload) {
+    fun sendRequest(webhookApi: WebhookApi, request: WebhookPayload) {
         var attempt = 0
         while (attempt < 3) {
             try {
@@ -33,6 +33,10 @@ class HttpWebhookHandler : WebhookHandler {
         }
     }
 
+    override fun sendWebhook(request: WebhookPayload) {
+        this.webhookApis.forEach { webhookApi -> this.sendRequest(webhookApi, request) }
+    }
+
     override fun getId(): String = PROVIDER_ID
 
     override fun initHandler() {
@@ -40,6 +44,6 @@ class HttpWebhookHandler : WebhookHandler {
 
         ApiClient.username = http.username
         ApiClient.password = http.password
-        webhookApi = WebhookApi(basePath = http.baseUrl)
+        webhookApis = http.baseUrls.map { url ->  WebhookApi(basePath = url)}
     }
 }

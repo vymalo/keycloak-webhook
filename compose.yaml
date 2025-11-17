@@ -2,16 +2,28 @@ x-keycloak-common-env: &keycloak-common-env
   WEBHOOK_HTTP_BASE_PATH: "http://prism:4010"
   WEBHOOK_HTTP_AUTH_USERNAME: "admin"
   WEBHOOK_HTTP_AUTH_PASSWORD: "password"
-  WEBHOOK_AMQP_HOST: rabbitmq
+
+  # Preferred for cluster-aware client:
+  WEBHOOK_AMQP_ADDRESSES: "rabbitmq1:5672,rabbitmq2:5672,rabbitmq3:5672"
+
+  # Back-compat (your code prefers ADDRESSES when present)
+  WEBHOOK_AMQP_HOST: rabbitmq1
+  WEBHOOK_AMQP_PORT: 5672
+
   WEBHOOK_AMQP_USERNAME: username
   WEBHOOK_AMQP_PASSWORD: password
-  WEBHOOK_AMQP_PORT: 5672
   WEBHOOK_AMQP_EXCHANGE: keycloak
   WEBHOOK_AMQP_VHOST: "/"
+  # Optional: tweak handler defaults (your AmqpConfig can read these)
+  WEBHOOK_AMQP_HEARTBEAT_SECONDS: "30"
+  WEBHOOK_AMQP_WH_HANDLER_BUFFER_CAPACITY: "1000"
+  WEBHOOK_AMQP_WH_HANDLER_INFLIGHT_CAPACITY: "1000"
+  WEBHOOK_AMQP_WH_HANDLER_CONFIRM_TIMEOUT_MS: "15000"
+
   KEYCLOAK_ADMIN: admin
   KEYCLOAK_ADMIN_PASSWORD: password
   KC_LOG_CONSOLE_COLOR: 'true'
-  
+
   WEBHOOK_SYSLOG_PROTOCOL: udp
   WEBHOOK_SYSLOG_HOSTNAME: keycloak
   WEBHOOK_SYSLOG_APP_NAME: keycloak_events
@@ -38,37 +50,38 @@ x-keycloak-common-extra: &keycloak-common-extra
   links:
     - prism
     - syslog-ng
-    - rabbitmq
+    - rabbitmq1
+    - rabbitmq2
+    - rabbitmq3
 
 services:
   keycloak-21:
     image: quay.io/keycloak/keycloak:21.1.2
-    ports:
-      - '9021:9021'
+    ports: ["9021:9021"]
     environment:
       <<: *keycloak-common-env
       KC_HTTP_PORT: 9021
     <<: *keycloak-common-extra
+
   keycloak-22:
     image: quay.io/keycloak/keycloak:22.0.5
-    ports:
-      - '9022:9022'
+    ports: ["9022:9022"]
     environment:
       <<: *keycloak-common-env
       KC_HTTP_PORT: 9022
     <<: *keycloak-common-extra
+
   keycloak-23:
     image: quay.io/keycloak/keycloak:23.0.7
-    ports:
-      - '9023:9023'
+    ports: ["9023:9023"]
     environment:
       <<: *keycloak-common-env
       KC_HTTP_PORT: 9023
     <<: *keycloak-common-extra
+
   keycloak-24:
     image: quay.io/keycloak/keycloak:24.0.5
-    ports:
-      - '9024:9024'
+    ports: ["9024:9024"]
     environment:
       <<: *keycloak-common-env
       KC_HTTP_PORT: 9024
@@ -76,8 +89,7 @@ services:
 
   keycloak-25:
     image: quay.io/keycloak/keycloak:25.0.6
-    ports:
-      - '9025:9025'
+    ports: ["9025:9025"]
     environment:
       <<: *keycloak-common-env
       KC_HTTP_PORT: 9025
@@ -85,36 +97,85 @@ services:
 
   keycloak-26:
     image: quay.io/keycloak/keycloak:26.4.0
-    ports:
-      - '9026:9026'
+    ports: ["9026:9026"]
     environment:
       <<: *keycloak-common-env
       KC_HTTP_PORT: 9026
     <<: *keycloak-common-extra
 
-  rabbitmq:
+  # ---------- RabbitMQ Cluster ----------
+  rabbitmq1:
     image: rabbitmq:3-management
-    ports:
-      - '4369:4369'
-      - '5551:5551'
-      - '5552:5552'
-      - '5672:5672'
-      - '25672:25672'
-      - '15672:15672'
+    hostname: rabbitmq1
     environment:
-      - RABBITMQ_DEFAULT_USER=username
-      - RABBITMQ_DEFAULT_PASS=password
+      RABBITMQ_NODENAME: rabbit@rabbitmq1
+      RABBITMQ_ERLANG_COOKIE: a-very-secret-cookie
+      RABBITMQ_DEFAULT_USER: username
+      RABBITMQ_DEFAULT_PASS: password
+      RABBITMQ_DEFAULT_VHOST: /
+    volumes:
+      - ./.docker/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq2:
+    image: rabbitmq:3-management
+    hostname: rabbitmq2
+    environment:
+      RABBITMQ_NODENAME: rabbit@rabbitmq2
+      RABBITMQ_ERLANG_COOKIE: a-very-secret-cookie
+      RABBITMQ_DEFAULT_USER: username
+      RABBITMQ_DEFAULT_PASS: password
+      RABBITMQ_DEFAULT_VHOST: /
+    volumes:
+      - ./.docker/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    ports:
+      - "5673:5672"    # AMQP
+      - "15673:15672"  # Management UI
+    depends_on:
+      rabbitmq1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq3:
+    image: rabbitmq:3-management
+    hostname: rabbitmq3
+    environment:
+      RABBITMQ_NODENAME: rabbit@rabbitmq3
+      RABBITMQ_ERLANG_COOKIE: a-very-secret-cookie
+      RABBITMQ_DEFAULT_USER: username
+      RABBITMQ_DEFAULT_PASS: password
+      RABBITMQ_DEFAULT_VHOST: /
+    volumes:
+      - ./.docker/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    ports:
+      - "5674:5672"    # AMQP
+      - "15674:15672"  # Management UI
+    depends_on:
+      rabbitmq1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  # ---------- end RabbitMQ Cluster ----------
 
   # This is a mock server for the receiving end of the webhook
   prism:
     image: stoplight/prism:latest
-    ports:
-      - '4010:4010'
-    command:
-      - mock
-      - -h
-      - 0.0.0.0
-      - /webhook.open-api.yml
+    ports: ["4010:4010"]
+    command: ["mock", "-h", "0.0.0.0", "/webhook.open-api.yml"]
     volumes:
       - ./openapi/webhook.open-api.yml:/webhook.open-api.yml
     restart: unless-stopped

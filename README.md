@@ -70,14 +70,22 @@ services:
       WEBHOOK_HTTP_BASE_PATH: "http://prism:4010"
       WEBHOOK_HTTP_AUTH_USERNAME: "admin"
       WEBHOOK_HTTP_AUTH_PASSWORD: "password"
-      # AMQP Provider Configuration
-      WEBHOOK_AMQP_HOST: rabbitmq
-      WEBHOOK_AMQP_USERNAME: username
-      WEBHOOK_AMQP_PASSWORD: password
-      WEBHOOK_AMQP_PORT: 5672
+      # AMQP Provider (Cluster-aware)
+      # Preferred: comma-separated host[:port] list
+      WEBHOOK_AMQP_ADDRESSES: "rabbitmq1:5672,rabbitmq2:5672,rabbitmq3:5672"
+      # Fallbacks (used only if ADDRESSES is empty)
+      WEBHOOK_AMQP_HOST: "rabbitmq1"
+      WEBHOOK_AMQP_PORT: "5672"
+      WEBHOOK_AMQP_USERNAME: "username"
+      WEBHOOK_AMQP_PASSWORD: "password"
       WEBHOOK_AMQP_VHOST: "/"
-      WEBHOOK_AMQP_EXCHANGE: keycloak
-      WEBHOOK_AMQP_SSL: "no"
+      WEBHOOK_AMQP_EXCHANGE: "keycloak"
+      WEBHOOK_AMQP_SSL: "false"
+      # Optional AMQP tuning (with defaults shown)
+      WEBHOOK_AMQP_HEARTBEAT_SECONDS: "30"
+      WEBHOOK_AMQP_WH_HANDLER_BUFFER_CAPACITY: "1000"
+      WEBHOOK_AMQP_WH_HANDLER_INFLIGHT_CAPACITY: "1000"
+      WEBHOOK_AMQP_WH_HANDLER_CONFIRM_TIMEOUT_MS: "15000"
       # Syslog Provider Configuration
       WEBHOOK_SYSLOG_PROTOCOL: udp
       WEBHOOK_SYSLOG_HOSTNAME: keycloak
@@ -157,14 +165,12 @@ spec:
               value: "admin"
             - name: WEBHOOK_HTTP_AUTH_PASSWORD
               value: "password"
-            - name: WEBHOOK_AMQP_HOST
-              value: "rabbitmq"
+            - name: WEBHOOK_AMQP_ADDRESSES
+              value: "rabbitmq1:5672,rabbitmq2:5672,rabbitmq3:5672"
             - name: WEBHOOK_AMQP_USERNAME
               value: "username"
             - name: WEBHOOK_AMQP_PASSWORD
               value: "password"
-            - name: WEBHOOK_AMQP_PORT
-              value: "5672"
             - name: WEBHOOK_AMQP_VHOST
               value: "/"
             - name: WEBHOOK_AMQP_EXCHANGE
@@ -197,10 +203,17 @@ spec:
 - **`WEBHOOK_HTTP_AUTH_PASSWORD` (optional)**  
   Basic auth password.
 
-### AMQP Provider
+### AMQP Provider (cluster-aware)
 
-- **`WEBHOOK_AMQP_HOST`**  
-  RabbitMQ server hostname.
+- **`WEBHOOK_AMQP_ADDRESSES` (preferred)**  
+  Comma-separated list of `host[:port]` for RabbitMQ nodes (e.g., `rabbitmq1:5672,rabbitmq2:5672,rabbitmq3:5672`).  
+  When set, this is used instead of `WEBHOOK_AMQP_HOST`/`WEBHOOK_AMQP_PORT`.
+
+- **`WEBHOOK_AMQP_HOST`** *(fallback)*  
+  RabbitMQ server hostname (used only if `WEBHOOK_AMQP_ADDRESSES` is empty/unset).
+
+- **`WEBHOOK_AMQP_PORT`** *(fallback)*  
+  RabbitMQ server port (default `5672` if omitted; used only if `WEBHOOK_AMQP_ADDRESSES` is empty/unset).
 
 - **`WEBHOOK_AMQP_USERNAME`**  
   Username for RabbitMQ.
@@ -208,17 +221,26 @@ spec:
 - **`WEBHOOK_AMQP_PASSWORD`**  
   Password for RabbitMQ.
 
-- **`WEBHOOK_AMQP_PORT`**  
-  Port for RabbitMQ.
-
 - **`WEBHOOK_AMQP_VHOST` (optional)**  
-  Virtual host for RabbitMQ.
+  Virtual host (default `/`).
 
 - **`WEBHOOK_AMQP_EXCHANGE`**  
-  Exchange name for RabbitMQ.
+  Exchange name (declared/verified as a durable `topic`).
 
 - **`WEBHOOK_AMQP_SSL` (optional)**  
-  `"yes"` or `"no"`, indicating if SSL is enabled.
+  `true` or `false` to enable TLS.
+
+- **`WEBHOOK_AMQP_HEARTBEAT_SECONDS` (optional)**  
+  Connection heartbeat in seconds (default `30`).
+
+- **`WEBHOOK_AMQP_WH_HANDLER_BUFFER_CAPACITY` (optional)**  
+  In-memory LRU buffer size for pending messages (default `1000`; drops oldest when full).
+
+- **`WEBHOOK_AMQP_WH_HANDLER_INFLIGHT_CAPACITY` (optional)**  
+  Async confirm InFlight listener max size for unconfirmed messages (default `1000`).
+
+- **`WEBHOOK_AMQP_WH_HANDLER_CONFIRM_TIMEOUT_MS` (optional)**  
+  Async confirm InFlight listener timeout in milliseconds for unconfirmed messages (default `15000`).
 
 ### Syslog Provider
 

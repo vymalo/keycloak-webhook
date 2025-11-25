@@ -123,7 +123,7 @@ class AmqpWebhookHandler : WebhookHandler {
         val amqp = AmqpConfig.fromEnv()
 
         exchange = amqp.exchange
-        deliveryMode = amqp.deliveryMode
+        deliveryMode = amqp.deliveryMode?.toInt() ?: 1
 
         if (this::connection.isInitialized && this::channel.isInitialized && connection.isOpen && channel.isOpen) {
             logger.debug("Connection is already open")

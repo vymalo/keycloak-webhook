@@ -10,6 +10,7 @@ data class AmqpConfig(
     val vHost: String?,
     val ssl: Boolean,
     val exchange: String,
+    val deliveryMode: String?
 ) {
     companion object {
         fun fromEnv(): AmqpConfig = AmqpConfig(
@@ -19,7 +20,8 @@ data class AmqpConfig(
             port = amqpPortKey.cff(),
             vHost = amqpVHostKey.cf(),
             ssl = amqpSsl.bf(),
-            exchange = amqpExchangeKey.cff()
+            exchange = amqpExchangeKey.cff(),
+            deliveryMode = amqpDeliveryMode.cf()
         )
     }
 }

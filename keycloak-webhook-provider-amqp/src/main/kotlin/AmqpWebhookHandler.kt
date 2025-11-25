@@ -9,12 +9,15 @@ import com.vymalo.keycloak.webhook.models.AmqpConfig
 import org.keycloak.utils.MediaType
 import org.slf4j.LoggerFactory
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.TimeoutException
 
 class AmqpWebhookHandler : WebhookHandler {
     private lateinit var channel: Channel
     private lateinit var connection: Connection
     private lateinit var exchange: String
     private lateinit var connectionFactory: ConnectionFactory
+    private var usePublisherConfirm: Boolean = false
+    private var confirmTimeout: Long = 5000
 
     companion object {
         const val PROVIDER_ID = "webhook-amqp"
@@ -95,7 +98,16 @@ class AmqpWebhookHandler : WebhookHandler {
                 requestStr.toByteArray(StandardCharsets.UTF_8)
             )
 
+            if (usePublisherConfirm) {
+                channel.waitForConfirms(confirmTimeout)
+            }
+
             logger.debug("Webhook message sent: {}", request)
+        } catch (timeoutException: TimeoutException) {
+            logger.error(
+                "Publisher confirm timeout after ${confirmTimeout}ms — message delivery could not be verified, request: $request",
+                timeoutException
+            )
         } catch (ex: Exception) {
             logger.error("Failed to send webhook message", ex)
         }
@@ -122,6 +134,8 @@ class AmqpWebhookHandler : WebhookHandler {
         val amqp = AmqpConfig.fromEnv()
 
         exchange = amqp.exchange
+        usePublisherConfirm = amqp.usePublisherConfirm
+        confirmTimeout = amqp.publisherConfirmTimeout?.toLong() ?: confirmTimeout
 
         if (this::connection.isInitialized && this::channel.isInitialized && connection.isOpen && channel.isOpen) {
             logger.debug("Connection is already open")
@@ -143,5 +157,8 @@ class AmqpWebhookHandler : WebhookHandler {
 
         connection = connectionFactory.newConnection()
         channel = connection.createChannel()
+        if (amqp.usePublisherConfirm) {
+            channel.confirmSelect()
+        }
     }
 }

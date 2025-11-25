@@ -13,6 +13,7 @@ const val amqpPortKey = "WEBHOOK_AMQP_PORT"
 const val amqpVHostKey = "WEBHOOK_AMQP_VHOST"
 const val amqpExchangeKey = "WEBHOOK_AMQP_EXCHANGE"
 const val amqpSsl = "WEBHOOK_AMQP_SSL"
+const val amqpDeliveryMode = "WEBHOOK_AMQP_DELIVERY_MODE"
 
 const val syslogProtocol = "WEBHOOK_SYSLOG_PROTOCOL"
 const val syslogHostname = "WEBHOOK_SYSLOG_HOSTNAME"

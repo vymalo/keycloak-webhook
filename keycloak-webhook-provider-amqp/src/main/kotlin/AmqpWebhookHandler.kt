@@ -15,6 +15,7 @@ class AmqpWebhookHandler : WebhookHandler {
     private lateinit var connection: Connection
     private lateinit var exchange: String
     private lateinit var connectionFactory: ConnectionFactory
+    private var deliveryMode: Int = 1
 
     companion object {
         const val PROVIDER_ID = "webhook-amqp"
@@ -26,20 +27,20 @@ class AmqpWebhookHandler : WebhookHandler {
         private val logger = LoggerFactory.getLogger(AmqpWebhookHandler::class.java)
 
         @JvmStatic
-        private fun getMessageProps(className: String): BasicProperties {
-            val headers: MutableMap<String, Any> = HashMap()
-            headers["__TypeId__"] = className
-            return BasicProperties.Builder()
-                .appId("Keycloak/Kotlin")
-                .headers(headers)
-                .contentType(MediaType.APPLICATION_JSON)
-                .contentEncoding("UTF-8")
-                .build()
-        }
-
-        @JvmStatic
         private fun genRoutingKey(request: WebhookPayload): String =
             "KC_CLIENT.${request.realmId}.${request.clientId ?: "xxx"}.${request.userId ?: "xxx"}.${request.type}"
+    }
+
+    private fun getMessageProps(className: String): BasicProperties {
+        val headers: MutableMap<String, Any> = HashMap()
+        headers["__TypeId__"] = className
+        return BasicProperties.Builder()
+            .appId("Keycloak/Kotlin")
+            .headers(headers)
+            .contentType(MediaType.APPLICATION_JSON)
+            .contentEncoding("UTF-8")
+            .deliveryMode(this.deliveryMode)
+            .build()
     }
 
     /**
@@ -122,6 +123,7 @@ class AmqpWebhookHandler : WebhookHandler {
         val amqp = AmqpConfig.fromEnv()
 
         exchange = amqp.exchange
+        deliveryMode = amqp.deliveryMode
 
         if (this::connection.isInitialized && this::channel.isInitialized && connection.isOpen && channel.isOpen) {
             logger.debug("Connection is already open")

@@ -46,6 +46,15 @@ data class WebhookPayload(
     val resourcePath: kotlin.String? = null,
 
     @SerializedName("representation")
-    val representation: kotlin.String? = null
+    val representation: kotlin.String? = null,
+
+    @SerializedName("userAttributes")
+    val userAttributes: kotlin.collections.Map<kotlin.String, kotlin.collections.List<kotlin.String>>? = null,
+
+    @SerializedName("realmRoles")
+    val realmRoles: kotlin.collections.List<kotlin.String>? = null,
+
+    @SerializedName("clientRoles")
+    val clientRoles: kotlin.collections.Map<kotlin.String, kotlin.collections.List<kotlin.String>>? = null
 
 )

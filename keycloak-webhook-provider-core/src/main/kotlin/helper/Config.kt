@@ -1,6 +1,7 @@
 package com.vymalo.keycloak.webhook.helper
 
 const val eventsTakenKey = "WEBHOOK_EVENTS_TAKEN"
+const val includeUserDataKey = "WEBHOOK_INCLUDE_USER_DATA"
 
 const val httpBaseBathKey = "WEBHOOK_HTTP_BASE_PATH"
 const val httpAuthUsernameKey = "WEBHOOK_HTTP_AUTH_USERNAME"

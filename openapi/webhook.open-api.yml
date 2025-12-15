@@ -71,6 +71,22 @@ components:
           type: string
         representation:
           type: string
+        userAttributes:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+        realmRoles:
+          type: array
+          items:
+            type: string
+        clientRoles:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
       required:
         - type
         - realmId

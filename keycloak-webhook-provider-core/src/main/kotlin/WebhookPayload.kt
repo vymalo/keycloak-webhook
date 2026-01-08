@@ -33,6 +33,9 @@ data class WebhookPayload(
     @SerializedName("userId")
     val userId: kotlin.String? = null,
 
+    @SerializedName("sessionId")
+    val sessionId: kotlin.String? = null,
+
     @SerializedName("ipAddress")
     val ipAddress: kotlin.String? = null,
 

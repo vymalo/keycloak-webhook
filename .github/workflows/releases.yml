@@ -29,7 +29,7 @@ jobs:
           cp */build/libs/*.jar ./
         
       - name: Archive Artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: target-jar
           path: "*.jar"
@@ -47,7 +47,7 @@ jobs:
 
       # Upload as an artifact of the current workflow
       - name: Upload build zip artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: Release artifacts
           path: '*.jar'

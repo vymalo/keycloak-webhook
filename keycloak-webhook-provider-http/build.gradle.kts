@@ -1,5 +1,3 @@
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
-
 plugins {
     kotlin("jvm")
     id("org.openapi.generator") version "7.24.0"
@@ -80,11 +78,10 @@ tasks {
         dependsOn(openApiGenerate)
     }
 
-    val shadowJar by existing(ShadowJar::class) {
+    shadowJar {
         dependencies {
             include(dependency("com.squareup.okhttp3:okhttp"))
             include(dependency("com.squareup.okio:okio-jvm"))
         }
-        dependsOn(build)
     }
 }

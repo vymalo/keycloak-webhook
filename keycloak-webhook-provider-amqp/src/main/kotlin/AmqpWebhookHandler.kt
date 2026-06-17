@@ -1,11 +1,13 @@
-package com.vymalo.keycloak.webhook
+package com.vymalo.keycloak.webhook.amqp
 
 import com.google.gson.Gson
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.Channel
 import com.rabbitmq.client.Connection
 import com.rabbitmq.client.ConnectionFactory
-import com.vymalo.keycloak.webhook.models.AmqpConfig
+import com.vymalo.keycloak.webhook.amqp.models.AmqpConfig
+import com.vymalo.keycloak.webhook.core.WebhookHandler
+import com.vymalo.keycloak.webhook.core.WebhookPayload
 import org.keycloak.utils.MediaType
 import org.slf4j.LoggerFactory
 import java.nio.charset.StandardCharsets
@@ -21,7 +23,7 @@ class AmqpWebhookHandler : WebhookHandler {
 
     companion object {
         const val PROVIDER_ID = "webhook-amqp"
-        
+
         @JvmStatic
         private val gson = Gson()
 

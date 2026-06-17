@@ -1,9 +1,9 @@
-package com.vymalo.keycloak.webhook.models
+package com.vymalo.keycloak.webhook.syslog.models
 
 import com.cloudbees.syslog.Facility
 import com.cloudbees.syslog.MessageFormat
 import com.cloudbees.syslog.Severity
-import com.vymalo.keycloak.webhook.helper.*
+import com.vymalo.keycloak.webhook.core.helper.*
 
 data class SyslogConfig(
     val protocol: String,

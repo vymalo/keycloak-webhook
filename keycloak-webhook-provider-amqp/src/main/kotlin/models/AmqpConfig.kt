@@ -1,6 +1,6 @@
-package com.vymalo.keycloak.webhook.models
+package com.vymalo.keycloak.webhook.amqp.models
 
-import com.vymalo.keycloak.webhook.helper.*
+import com.vymalo.keycloak.webhook.core.helper.*
 
 data class AmqpConfig(
     val username: String,

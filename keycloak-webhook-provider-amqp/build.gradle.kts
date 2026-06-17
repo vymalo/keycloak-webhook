@@ -36,6 +36,5 @@ tasks {
         dependencies {
             include(dependency("com.rabbitmq:amqp-client"))
         }
-        dependsOn(build)
     }
 }

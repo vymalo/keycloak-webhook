@@ -13,6 +13,7 @@ import org.keycloak.models.ClientModel
 import org.keycloak.models.KeycloakSession
 import okhttp3.Credentials
 import org.slf4j.LoggerFactory
+import java.util.concurrent.ConcurrentHashMap
 
 class HttpWebhookHandler : WebhookHandler {
     private lateinit var webhookApis: List<AuthenticatedWebhookApi>
@@ -22,6 +23,7 @@ class HttpWebhookHandler : WebhookHandler {
 
     companion object {
         private val logger = LoggerFactory.getLogger(HttpWebhookHandler::class.java)
+        private val webhookApiCache = ConcurrentHashMap<String, AuthenticatedWebhookApi>()
         const val PROVIDER_ID = "webhook-http"
     }
 
@@ -82,12 +84,14 @@ class HttpWebhookHandler : WebhookHandler {
     }
 
     private fun createWebhookApi(baseUrl: String): AuthenticatedWebhookApi {
-        return AuthenticatedWebhookApi(basePath = baseUrl)
+        return webhookApiCache.computeIfAbsent(baseUrl) { url ->
+            AuthenticatedWebhookApi(basePath = url)
+        }
     }
 
     private class AuthenticatedWebhookApi(
         basePath: String,
-    ) : WebhookApi(basePath = basePath, client = defaultClient) {
+    ) : WebhookApi(basePath = basePath) {
 
         fun sendWebhook(request: WebhookRequest, authorizationHeader: String?) {
             val requestConfig = sendWebhookRequestConfig(request)

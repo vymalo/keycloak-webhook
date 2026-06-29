@@ -7,8 +7,8 @@ import com.vymalo.keycloak.webhook.core.WebhookHandler
 import com.vymalo.keycloak.webhook.core.WebhookPayload
 import com.vymalo.keycloak.webhook.http.models.HttpConfig
 import com.vymalo.keycloak.webhook.http.utils.toWebhookRequest
-import com.vymalo.keycloak.openapi.client.infrastructure.ApiClient
 import com.vymalo.keycloak.openapi.client.infrastructure.RequestConfig
+import com.vymalo.keycloak.openapi.client.model.WebhookRequest
 import org.keycloak.models.ClientModel
 import org.keycloak.models.KeycloakSession
 import okhttp3.Credentials
@@ -87,16 +87,16 @@ class HttpWebhookHandler : WebhookHandler {
 
     private class AuthenticatedWebhookApi(
         basePath: String,
-    ) : WebhookApi(basePath = basePath, client = ApiClient.defaultClient) {
+    ) : WebhookApi(basePath = basePath, client = defaultClient) {
 
-        fun sendWebhook(request: com.vymalo.keycloak.openapi.client.model.WebhookRequest, authorizationHeader: String?) {
+        fun sendWebhook(request: WebhookRequest, authorizationHeader: String?) {
             val requestConfig = sendWebhookRequestConfig(request)
             applyAuthorizationHeader(requestConfig, authorizationHeader)
-            request<com.vymalo.keycloak.openapi.client.model.WebhookRequest, Unit>(requestConfig)
+            request<WebhookRequest, Unit>(requestConfig)
         }
 
         private fun applyAuthorizationHeader(
-            requestConfig: RequestConfig<com.vymalo.keycloak.openapi.client.model.WebhookRequest>,
+            requestConfig: RequestConfig<WebhookRequest>,
             authorizationHeader: String?
         ) {
             if (authorizationHeader == null) {

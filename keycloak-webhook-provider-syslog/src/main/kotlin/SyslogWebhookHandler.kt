@@ -7,6 +7,7 @@ import com.google.gson.Gson
 import com.vymalo.keycloak.webhook.core.WebhookHandler
 import com.vymalo.keycloak.webhook.core.WebhookPayload
 import com.vymalo.keycloak.webhook.syslog.models.SyslogConfig
+import org.keycloak.models.KeycloakSession
 import org.slf4j.LoggerFactory
 
 
@@ -38,12 +39,14 @@ class SyslogWebhookHandler : WebhookHandler {
 
     override fun close() {
         runCatching {
-            messageSender.close()
+            if (this::messageSender.isInitialized) {
+                messageSender.close()
+            }
         }.onFailure { logger.warn("Error closing channel", it) }
     }
 
-    override fun initHandler() {
-        val syslogConfig = SyslogConfig.fromEnv()
+    override fun initHandler(session: KeycloakSession, clientId: String?) {
+        val syslogConfig = SyslogConfig.from(session, clientId)
 
         val messageSender = when (syslogConfig.protocol) {
             "TCP" -> TcpSyslogMessageSender()

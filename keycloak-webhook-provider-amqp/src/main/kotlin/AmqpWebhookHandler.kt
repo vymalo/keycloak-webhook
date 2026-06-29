@@ -8,6 +8,7 @@ import com.rabbitmq.client.ConnectionFactory
 import com.vymalo.keycloak.webhook.amqp.models.AmqpConfig
 import com.vymalo.keycloak.webhook.core.WebhookHandler
 import com.vymalo.keycloak.webhook.core.WebhookPayload
+import org.keycloak.models.KeycloakSession
 import org.keycloak.utils.MediaType
 import org.slf4j.LoggerFactory
 import java.nio.charset.StandardCharsets
@@ -119,21 +120,21 @@ class AmqpWebhookHandler : WebhookHandler {
 
     override fun close() {
         runCatching {
-            if (channel.isOpen) {
+            if (this::channel.isInitialized && channel.isOpen) {
                 channel.close()
             }
         }.onFailure { logger.warn("Error closing channel", it) }
 
         runCatching {
-            if (connection.isOpen) {
+            if (this::connection.isInitialized && connection.isOpen) {
                 connection.close()
             }
         }.onFailure { logger.warn("Error closing connection", it) }
     }
 
 
-    override fun initHandler() {
-        val amqp = AmqpConfig.fromEnv()
+    override fun initHandler(session: KeycloakSession, clientId: String?) {
+        val amqp = AmqpConfig.from(session, clientId)
 
         exchange = amqp.exchange
         usePublisherConfirm = amqp.usePublisherConfirm

@@ -1,6 +1,7 @@
 package com.vymalo.keycloak.webhook.amqp.models
 
 import com.vymalo.keycloak.webhook.core.helper.*
+import org.keycloak.models.KeycloakSession
 
 data class AmqpConfig(
     val username: String,
@@ -14,16 +15,19 @@ data class AmqpConfig(
     val publisherConfirmTimeout: String?
 ) {
     companion object {
-        fun fromEnv(): AmqpConfig = AmqpConfig(
-            username = amqpUsernameKey.cff(),
-            password = amqpPasswordKey.cff(),
-            host = amqpHostKey.cff(),
-            port = amqpPortKey.cff(),
-            vHost = amqpVHostKey.cf(),
-            ssl = amqpSsl.bf(),
-            exchange = amqpExchangeKey.cff(),
-            usePublisherConfirm = amqpEnablePublisherConfirm.bf(),
-            publisherConfirmTimeout = amqpPublisherConfirmTimeout.cf()
-        )
+        fun from(session: KeycloakSession, clientId: String?): AmqpConfig {
+            val config = ClientAttributeConfig.from(session, clientId)
+            return AmqpConfig(
+                username = config.requiredString(amqpUsernameKey),
+                password = config.requiredString(amqpPasswordKey),
+                host = config.requiredString(amqpHostKey),
+                port = config.requiredString(amqpPortKey),
+                vHost = config.string(amqpVHostKey),
+                ssl = config.boolean(amqpSsl),
+                exchange = config.requiredString(amqpExchangeKey),
+                usePublisherConfirm = config.boolean(amqpEnablePublisherConfirm),
+                publisherConfirmTimeout = config.string(amqpPublisherConfirmTimeout)
+            )
+        }
     }
 }

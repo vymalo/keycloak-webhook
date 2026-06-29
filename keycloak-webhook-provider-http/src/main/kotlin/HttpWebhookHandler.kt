@@ -7,24 +7,29 @@ import com.vymalo.keycloak.webhook.core.WebhookHandler
 import com.vymalo.keycloak.webhook.core.WebhookPayload
 import com.vymalo.keycloak.webhook.http.models.HttpConfig
 import com.vymalo.keycloak.webhook.http.utils.toWebhookRequest
-import okhttp3.OkHttpClient
+import com.vymalo.keycloak.openapi.client.infrastructure.ApiClient
+import com.vymalo.keycloak.openapi.client.infrastructure.RequestConfig
+import org.keycloak.models.ClientModel
 import org.keycloak.models.KeycloakSession
 import okhttp3.Credentials
 import org.slf4j.LoggerFactory
 
 class HttpWebhookHandler : WebhookHandler {
-    private lateinit var webhookApis: List<WebhookApi>
+    private lateinit var webhookApis: List<AuthenticatedWebhookApi>
+    private lateinit var session: KeycloakSession
+    private lateinit var httpConfig: HttpConfig
+    private var sourceClient: ClientModel? = null
 
     companion object {
         private val logger = LoggerFactory.getLogger(HttpWebhookHandler::class.java)
         const val PROVIDER_ID = "webhook-http"
     }
 
-    fun sendRequest(webhookApi: WebhookApi, request: WebhookPayload) {
+    private fun sendRequest(webhookApi: AuthenticatedWebhookApi, request: WebhookPayload) {
         var attempt = 0
         while (attempt < 3) {
             try {
-                webhookApi.sendWebhook(request.toWebhookRequest())
+                webhookApi.sendWebhook(request.toWebhookRequest(), getAuthorizationHeader())
                 logger.debug("Webhook sent successfully on attempt ${attempt + 1}")
                 break // Exit loop if successful
             } catch (ex: Exception) {
@@ -46,41 +51,60 @@ class HttpWebhookHandler : WebhookHandler {
     override fun getId(): String = PROVIDER_ID
 
     override fun initHandler(session: KeycloakSession, clientId: String?) {
-        val http = HttpConfig.from(session, clientId)
+        this.session = session
+        httpConfig = HttpConfig.from(session, clientId)
         val config = ClientAttributeConfig.from(session, clientId)
-        val authorizationHeader = when {
-            http.authAudience != null -> {
-                val sourceClient = config.client
-                    ?: throw IllegalStateException("HTTP webhook JWT auth requires a client context")
-                InternalTokenService.createBearerToken(
-                    session = session,
-                    realm = session.context.realm,
-                    client = sourceClient,
-                    audience = http.authAudience,
-                    ttlSeconds = http.authTtlSeconds
-                ).let { token -> "Bearer $token" }
-            }
-            http.username != null && http.password != null -> Credentials.basic(http.username, http.password)
-            else -> null
+        sourceClient = config.client
+
+        if (httpConfig.authAudience != null && sourceClient == null) {
+            throw IllegalStateException("HTTP webhook JWT auth requires a client context")
         }
 
-        webhookApis = http.baseUrls.map { url -> createWebhookApi(url, authorizationHeader) }
+        webhookApis = httpConfig.baseUrls.map(::createWebhookApi)
     }
 
-    private fun createWebhookApi(baseUrl: String, authorizationHeader: String?): WebhookApi {
-        if (authorizationHeader == null) {
-            return WebhookApi(basePath = baseUrl)
+    private fun getAuthorizationHeader(): String? {
+        val authAudience = httpConfig.authAudience
+        val username = httpConfig.username
+        val password = httpConfig.password
+
+        return when {
+            authAudience != null -> InternalTokenService.createBearerToken(
+                session = session,
+                realm = session.context.realm,
+                client = sourceClient!!,
+                audience = authAudience,
+                ttlSeconds = httpConfig.authTtlSeconds
+            ).let { token -> "Bearer $token" }
+            username != null && password != null -> Credentials.basic(username, password)
+            else -> null
+        }
+    }
+
+    private fun createWebhookApi(baseUrl: String): AuthenticatedWebhookApi {
+        return AuthenticatedWebhookApi(basePath = baseUrl)
+    }
+
+    private class AuthenticatedWebhookApi(
+        basePath: String,
+    ) : WebhookApi(basePath = basePath, client = ApiClient.defaultClient) {
+
+        fun sendWebhook(request: com.vymalo.keycloak.openapi.client.model.WebhookRequest, authorizationHeader: String?) {
+            val requestConfig = sendWebhookRequestConfig(request)
+            applyAuthorizationHeader(requestConfig, authorizationHeader)
+            request<com.vymalo.keycloak.openapi.client.model.WebhookRequest, Unit>(requestConfig)
         }
 
-        val client = OkHttpClient.Builder()
-            .addInterceptor { chain ->
-                val authenticatedRequest = chain.request().newBuilder()
-                    .header("Authorization", authorizationHeader)
-                    .build()
-                chain.proceed(authenticatedRequest)
+        private fun applyAuthorizationHeader(
+            requestConfig: RequestConfig<com.vymalo.keycloak.openapi.client.model.WebhookRequest>,
+            authorizationHeader: String?
+        ) {
+            if (authorizationHeader == null) {
+                requestConfig.headers.remove("Authorization")
+                return
             }
-            .build()
 
-        return WebhookApi(basePath = baseUrl, client = client)
+            requestConfig.headers["Authorization"] = authorizationHeader
+        }
     }
 }

@@ -16,22 +16,24 @@ import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 
 class HttpWebhookHandler : WebhookHandler {
-    private lateinit var webhookApis: List<AuthenticatedWebhookApi>
-    private lateinit var session: KeycloakSession
-    private lateinit var httpConfig: HttpConfig
-    private var sourceClient: ClientModel? = null
-
     companion object {
         private val logger = LoggerFactory.getLogger(HttpWebhookHandler::class.java)
         private val webhookApiCache = ConcurrentHashMap<String, AuthenticatedWebhookApi>()
         const val PROVIDER_ID = "webhook-http"
     }
 
-    private fun sendRequest(webhookApi: AuthenticatedWebhookApi, request: WebhookPayload) {
+    private fun sendRequest(
+        webhookApi: AuthenticatedWebhookApi,
+        getAuthenticationHeader: () -> String?,
+        request: WebhookPayload,
+    ) {
         var attempt = 0
         while (attempt < 3) {
             try {
-                webhookApi.sendWebhook(request.toWebhookRequest(), getAuthorizationHeader())
+                webhookApi.sendWebhook(
+                    request.toWebhookRequest(),
+                    getAuthenticationHeader()
+                )
                 logger.debug("Webhook sent successfully on attempt ${attempt + 1}")
                 break // Exit loop if successful
             } catch (ex: Exception) {
@@ -46,26 +48,34 @@ class HttpWebhookHandler : WebhookHandler {
         }
     }
 
-    override fun sendWebhook(request: WebhookPayload) {
-        this.webhookApis.forEach { webhookApi -> this.sendRequest(webhookApi, request) }
-    }
-
-    override fun getId(): String = PROVIDER_ID
-
-    override fun initHandler(session: KeycloakSession, clientId: String?) {
-        this.session = session
-        httpConfig = HttpConfig.from(session, clientId)
-        val config = ClientAttributeConfig.from(session, clientId)
-        sourceClient = config.client
+    override fun sendWebhook(session: KeycloakSession, request: WebhookPayload) {
+        val httpConfig = HttpConfig.from(session, request.clientId)
+        val sourceClient = ClientAttributeConfig.from(session, request.clientId).client
 
         if (httpConfig.authAudience != null && sourceClient == null) {
             throw IllegalStateException("HTTP webhook JWT auth requires a client context")
         }
 
-        webhookApis = httpConfig.baseUrls.map(::createWebhookApi)
+        httpConfig.baseUrls
+            .map(::createWebhookApi)
+            .forEach { webhookApi ->
+                sendRequest(webhookApi, {
+                    this@HttpWebhookHandler.getAuthorizationHeader(
+                        session,
+                        httpConfig,
+                        sourceClient
+                    )
+                }, request)
+            }
     }
 
-    private fun getAuthorizationHeader(): String? {
+    override fun getId(): String = PROVIDER_ID
+
+    private fun getAuthorizationHeader(
+        session: KeycloakSession,
+        httpConfig: HttpConfig,
+        sourceClient: ClientModel?
+    ): String? {
         val authAudience = httpConfig.authAudience
         val username = httpConfig.username
         val password = httpConfig.password

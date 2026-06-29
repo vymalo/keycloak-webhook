@@ -32,11 +32,7 @@ abstract class AbstractWebhookEventListenerFactory(
         private val session: KeycloakSession,
         private val delegate: WebhookHandler
     ) : EventListenerProvider {
-        private var takeList: Set<String>? = null
-        private var initialized = false
-
         override fun onEvent(event: Event) {
-            ensureParametersInit(event.clientId)
             send(
                 event.id,
                 event.time,
@@ -55,7 +51,6 @@ abstract class AbstractWebhookEventListenerFactory(
         }
 
         override fun onEvent(event: AdminEvent, includeRepresentation: Boolean) {
-            ensureParametersInit(event.authDetails?.clientId)
             send(
                 event.id,
                 event.time,
@@ -75,25 +70,6 @@ abstract class AbstractWebhookEventListenerFactory(
 
         override fun close() = delegate.close()
 
-        @Synchronized
-        private fun ensureParametersInit(clientId: String?) {
-            if (initialized) {
-                return
-            }
-
-            synchronized(delegate) {
-                if (initialized) {
-                    return
-                }
-
-                delegate.initHandler(session, clientId)
-                takeList = ClientAttributeConfig.from(session, clientId)
-                    .list(eventsTakenKey)
-                    ?.toSet()
-                initialized = true
-            }
-        }
-
         private fun send(
             id: String,
             time: Long?,
@@ -109,7 +85,11 @@ abstract class AbstractWebhookEventListenerFactory(
             resourcePath: String?,
             representation: String?,
         ) {
-            if (takeList != null && type !in takeList!!) {
+            val takeList = ClientAttributeConfig.from(session, clientId)
+                .list(eventsTakenKey)
+                ?.toSet()
+
+            if (takeList != null && type !in takeList) {
                 LOG.debug("Event {} not in the taken list. Will be skipped ({}).", type, takeList)
                 return
             }
@@ -132,7 +112,7 @@ abstract class AbstractWebhookEventListenerFactory(
 
             try {
                 LOG.debug("Sending [{}] webhook for event type {}: {}", delegate.getId(), type, request)
-                delegate.sendWebhook(request)
+                delegate.sendWebhook(session, request)
             } catch (e: Throwable) {
                 LOG.error("Could not send webhook", e)
             }

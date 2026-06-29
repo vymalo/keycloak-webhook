@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory
 
 class SyslogWebhookHandler : WebhookHandler {
     private lateinit var messageSender: AbstractSyslogMessageSender
+    private var currentConfig: SyslogConfig? = null
 
     companion object {
         const val PROVIDER_ID = "webhook-syslog"
@@ -24,7 +25,9 @@ class SyslogWebhookHandler : WebhookHandler {
         private val logger = LoggerFactory.getLogger(SyslogWebhookHandler::class.java)
     }
 
-    override fun sendWebhook(request: WebhookPayload) {
+    override fun sendWebhook(session: KeycloakSession, request: WebhookPayload) {
+        initHandler(session, request.clientId)
+
         try {
             val requestStr = gson.toJson(request)
             messageSender.sendMessage(requestStr)
@@ -45,8 +48,14 @@ class SyslogWebhookHandler : WebhookHandler {
         }.onFailure { logger.warn("Error closing channel", it) }
     }
 
-    override fun initHandler(session: KeycloakSession, clientId: String?) {
+    private fun initHandler(session: KeycloakSession, clientId: String?) {
         val syslogConfig = SyslogConfig.from(session, clientId)
+
+        if (currentConfig == syslogConfig && this::messageSender.isInitialized) {
+            return
+        }
+
+        close()
 
         val messageSender = when (syslogConfig.protocol) {
             "TCP" -> TcpSyslogMessageSender()
@@ -63,5 +72,6 @@ class SyslogWebhookHandler : WebhookHandler {
         messageSender.messageFormat = syslogConfig.messageFormat
 
         this.messageSender = messageSender
+        currentConfig = syslogConfig
     }
 }

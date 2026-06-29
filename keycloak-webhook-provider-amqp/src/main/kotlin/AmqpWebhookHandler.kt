@@ -19,6 +19,7 @@ class AmqpWebhookHandler : WebhookHandler {
     private lateinit var connection: Connection
     private lateinit var exchange: String
     private lateinit var connectionFactory: ConnectionFactory
+    private var currentConfig: AmqpConfig? = null
     private var usePublisherConfirm: Boolean = false
     private var confirmTimeout: Long = 5000
 
@@ -82,7 +83,9 @@ class AmqpWebhookHandler : WebhookHandler {
         }
     }
 
-    override fun sendWebhook(request: WebhookPayload) {
+    override fun sendWebhook(session: KeycloakSession, request: WebhookPayload) {
+        initHandler(session, request.clientId)
+
         if (!connection.isOpen || !channel.isOpen) {
             ensureConnection()
         }
@@ -133,18 +136,21 @@ class AmqpWebhookHandler : WebhookHandler {
     }
 
 
-    override fun initHandler(session: KeycloakSession, clientId: String?) {
+    private fun initHandler(session: KeycloakSession, clientId: String?) {
         val amqp = AmqpConfig.from(session, clientId)
+
+        if (currentConfig == amqp && this::connection.isInitialized && this::channel.isInitialized) {
+            exchange = amqp.exchange
+            usePublisherConfirm = amqp.usePublisherConfirm
+            confirmTimeout = amqp.publisherConfirmTimeout?.toLong() ?: confirmTimeout
+            return
+        }
+
+        close()
 
         exchange = amqp.exchange
         usePublisherConfirm = amqp.usePublisherConfirm
         confirmTimeout = amqp.publisherConfirmTimeout?.toLong() ?: confirmTimeout
-
-        if (this::connection.isInitialized && this::channel.isInitialized && connection.isOpen && channel.isOpen) {
-            logger.debug("Connection is already open")
-            return
-        }
-
 
         connectionFactory = ConnectionFactory().apply {
             username = amqp.username
@@ -160,6 +166,7 @@ class AmqpWebhookHandler : WebhookHandler {
 
         connection = connectionFactory.newConnection()
         channel = connection.createChannel()
+        currentConfig = amqp
         if (amqp.usePublisherConfirm) {
             channel.confirmSelect()
         }

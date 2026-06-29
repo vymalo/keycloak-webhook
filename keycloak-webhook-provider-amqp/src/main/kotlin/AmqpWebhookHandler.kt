@@ -12,25 +12,22 @@ import org.keycloak.models.KeycloakSession
 import org.keycloak.utils.MediaType
 import org.slf4j.LoggerFactory
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeoutException
 
 class AmqpWebhookHandler : WebhookHandler {
-    private lateinit var channel: Channel
-    private lateinit var connection: Connection
-    private lateinit var exchange: String
-    private lateinit var connectionFactory: ConnectionFactory
-    private var currentConfig: AmqpConfig? = null
-    private var usePublisherConfirm: Boolean = false
-    private var confirmTimeout: Long = 5000
-
     companion object {
         const val PROVIDER_ID = "webhook-amqp"
+        private const val defaultConfirmTimeout = 5000L
 
         @JvmStatic
         private val gson = Gson()
 
         @JvmStatic
         private val logger = LoggerFactory.getLogger(AmqpWebhookHandler::class.java)
+
+        @JvmStatic
+        private val connectionCache = ConcurrentHashMap<AmqpConfig, CachedAmqpConnection>()
 
         @JvmStatic
         private fun getMessageProps(className: String): BasicProperties {
@@ -49,69 +46,21 @@ class AmqpWebhookHandler : WebhookHandler {
             "KC_CLIENT.${request.realmId}.${request.clientId ?: "xxx"}.${request.userId ?: "xxx"}.${request.type}"
     }
 
-    /**
-     * Ensures that the connection and channel are open.
-     * If either is closed, it will try to reinitialize them up to 3 times.
-     */
-    private fun ensureConnection() {
-        var attempts = 0
-        while (attempts < 3 && (!connection.isOpen || !channel.isOpen)) {
-            attempts++
-            logger.debug("Attempting to re-establish connection (attempt $attempts)...")
-            try {
-                logger.debug("Closing connection and channel...")
-                runCatching {
-                    if (channel.isOpen) channel.close()
-                }
-
-                logger.debug("Channel closed. Closing connection...")
-                runCatching {
-                    if (connection.isOpen) connection.close()
-                }
-
-                logger.debug("Connection closed. Reinitializing connection and channel...")
-                connection = connectionFactory.newConnection()
-                channel = connection.createChannel()
-                logger.debug("Reconnection attempt $attempts successful: connection.isOpen=${connection.isOpen}, channel.isOpen=${channel.isOpen}")
-            } catch (ex: Exception) {
-                logger.warn("Attempt $attempts failed to reinitialize connection: ${ex.message}", ex)
-                Thread.sleep(1000L) // Wait 1 second before trying again
-            }
-        }
-        if (!connection.isOpen || !channel.isOpen) {
-            logger.error("Unable to re-establish connection after $attempts attempts.")
-        }
-    }
-
     override fun sendWebhook(session: KeycloakSession, request: WebhookPayload) {
-        initHandler(session, request.clientId)
-
-        if (!connection.isOpen || !channel.isOpen) {
-            ensureConnection()
-        }
-
-        if (!connection.isOpen || !channel.isOpen) {
-            logger.warn("AMQP channel or connection is still closed. Unable to send webhook: {}", request)
-            return
-        }
+        val connection = getOrCreateConnection(AmqpConfig.from(session, request.clientId))
 
         try {
             val requestStr = gson.toJson(request)
-            channel.basicPublish(
-                exchange,
+            connection.publish(
                 genRoutingKey(request),
                 getMessageProps(request.javaClass.name),
                 requestStr.toByteArray(StandardCharsets.UTF_8)
             )
 
-            if (usePublisherConfirm) {
-                channel.waitForConfirms(confirmTimeout)
-            }
-
             logger.debug("Webhook message sent: {}", request)
         } catch (timeoutException: TimeoutException) {
             logger.error(
-                "Publisher confirm timeout after ${confirmTimeout}ms — message delivery could not be verified, request: $request",
+                "Publisher confirm timeout after ${connection.confirmTimeout}ms — message delivery could not be verified, request: $request",
                 timeoutException
             )
         } catch (ex: Exception) {
@@ -122,53 +71,77 @@ class AmqpWebhookHandler : WebhookHandler {
     override fun getId(): String = PROVIDER_ID
 
     override fun close() {
-        runCatching {
-            if (this::channel.isInitialized && channel.isOpen) {
-                channel.close()
-            }
-        }.onFailure { logger.warn("Error closing channel", it) }
-
-        runCatching {
-            if (this::connection.isInitialized && connection.isOpen) {
-                connection.close()
-            }
-        }.onFailure { logger.warn("Error closing connection", it) }
     }
 
+    private fun getOrCreateConnection(config: AmqpConfig): CachedAmqpConnection {
+        return connectionCache.computeIfAbsent(config, ::CachedAmqpConnection)
+    }
 
-    private fun initHandler(session: KeycloakSession, clientId: String?) {
-        val amqp = AmqpConfig.from(session, clientId)
-
-        if (currentConfig == amqp && this::connection.isInitialized && this::channel.isInitialized) {
-            exchange = amqp.exchange
-            usePublisherConfirm = amqp.usePublisherConfirm
-            confirmTimeout = amqp.publisherConfirmTimeout?.toLong() ?: confirmTimeout
-            return
-        }
-
-        close()
-
-        exchange = amqp.exchange
-        usePublisherConfirm = amqp.usePublisherConfirm
-        confirmTimeout = amqp.publisherConfirmTimeout?.toLong() ?: confirmTimeout
-
-        connectionFactory = ConnectionFactory().apply {
-            username = amqp.username
-            password = amqp.password
-            virtualHost = amqp.vHost
-            host = amqp.host
-            port = amqp.port.toInt()
+    private class CachedAmqpConnection(private val config: AmqpConfig) {
+        private val connectionFactory = ConnectionFactory().apply {
+            username = config.username
+            password = config.password
+            virtualHost = config.vHost
+            host = config.host
+            port = config.port.toInt()
             isAutomaticRecoveryEnabled = true
-            if (amqp.ssl) {
+            if (config.ssl) {
                 useSslProtocol()
             }
         }
 
-        connection = connectionFactory.newConnection()
-        channel = connection.createChannel()
-        currentConfig = amqp
-        if (amqp.usePublisherConfirm) {
-            channel.confirmSelect()
+        private var connection: Connection = connectionFactory.newConnection()
+        private var channel: Channel = connection.createChannel().also {
+            if (config.usePublisherConfirm) {
+                it.confirmSelect()
+            }
+        }
+
+        val confirmTimeout: Long = config.publisherConfirmTimeout?.toLong() ?: defaultConfirmTimeout
+
+        @Synchronized
+        fun publish(routingKey: String, properties: BasicProperties, body: ByteArray) {
+            ensureConnection()
+
+            if (!connection.isOpen || !channel.isOpen) {
+                throw IllegalStateException("AMQP channel or connection is still closed")
+            }
+
+            channel.basicPublish(config.exchange, routingKey, properties, body)
+            if (config.usePublisherConfirm) {
+                channel.waitForConfirms(confirmTimeout)
+            }
+        }
+
+        private fun ensureConnection() {
+            var attempts = 0
+            while (attempts < 3 && (!connection.isOpen || !channel.isOpen)) {
+                attempts++
+                logger.debug("Attempting to re-establish connection (attempt $attempts)...")
+                try {
+                    runCatching {
+                        if (channel.isOpen) channel.close()
+                    }
+                    runCatching {
+                        if (connection.isOpen) connection.close()
+                    }
+
+                    connection = connectionFactory.newConnection()
+                    channel = connection.createChannel().also {
+                        if (config.usePublisherConfirm) {
+                            it.confirmSelect()
+                        }
+                    }
+                    logger.debug("Reconnection attempt $attempts successful: connection.isOpen=${connection.isOpen}, channel.isOpen=${channel.isOpen}")
+                } catch (ex: Exception) {
+                    logger.warn("Attempt $attempts failed to reinitialize connection: ${ex.message}", ex)
+                    Thread.sleep(1000L)
+                }
+            }
+
+            if (!connection.isOpen || !channel.isOpen) {
+                logger.error("Unable to re-establish connection after $attempts attempts.")
+            }
         }
     }
 }

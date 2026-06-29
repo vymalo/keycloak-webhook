@@ -9,12 +9,10 @@ import com.vymalo.keycloak.webhook.core.WebhookPayload
 import com.vymalo.keycloak.webhook.syslog.models.SyslogConfig
 import org.keycloak.models.KeycloakSession
 import org.slf4j.LoggerFactory
+import java.util.concurrent.ConcurrentHashMap
 
 
 class SyslogWebhookHandler : WebhookHandler {
-    private lateinit var messageSender: AbstractSyslogMessageSender
-    private var currentConfig: SyslogConfig? = null
-
     companion object {
         const val PROVIDER_ID = "webhook-syslog"
 
@@ -23,10 +21,13 @@ class SyslogWebhookHandler : WebhookHandler {
 
         @JvmStatic
         private val logger = LoggerFactory.getLogger(SyslogWebhookHandler::class.java)
+
+        @JvmStatic
+        private val messageSenderCache = ConcurrentHashMap<SyslogConfig, AbstractSyslogMessageSender>()
     }
 
     override fun sendWebhook(session: KeycloakSession, request: WebhookPayload) {
-        initHandler(session, request.clientId)
+        val messageSender = getOrCreateMessageSender(SyslogConfig.from(session, request.clientId))
 
         try {
             val requestStr = gson.toJson(request)
@@ -41,37 +42,24 @@ class SyslogWebhookHandler : WebhookHandler {
     override fun getId(): String = PROVIDER_ID
 
     override fun close() {
-        runCatching {
-            if (this::messageSender.isInitialized) {
-                messageSender.close()
-            }
-        }.onFailure { logger.warn("Error closing channel", it) }
     }
 
-    private fun initHandler(session: KeycloakSession, clientId: String?) {
-        val syslogConfig = SyslogConfig.from(session, clientId)
+    private fun getOrCreateMessageSender(config: SyslogConfig): AbstractSyslogMessageSender {
+        return messageSenderCache.computeIfAbsent(config) { syslogConfig ->
+            val messageSender = when (syslogConfig.protocol) {
+                "TCP" -> TcpSyslogMessageSender()
+                "UDP" -> UdpSyslogMessageSender()
+                else -> throw RuntimeException("Protocol unknown ${syslogConfig.protocol}")
+            }
 
-        if (currentConfig == syslogConfig && this::messageSender.isInitialized) {
-            return
+            messageSender.defaultMessageHostname = syslogConfig.serverHostname
+            messageSender.defaultAppName = syslogConfig.appName
+            messageSender.defaultFacility = syslogConfig.facility
+            messageSender.defaultSeverity = syslogConfig.severity
+            messageSender.setSyslogServerHostname(syslogConfig.serverHostname)
+            messageSender.setSyslogServerPort(syslogConfig.serverPort.toInt())
+            messageSender.messageFormat = syslogConfig.messageFormat
+            messageSender
         }
-
-        close()
-
-        val messageSender = when (syslogConfig.protocol) {
-            "TCP" -> TcpSyslogMessageSender()
-            "UDP" -> UdpSyslogMessageSender()
-            else -> throw RuntimeException("Protocol unknown ${syslogConfig.protocol}")
-        }
-
-        messageSender.defaultMessageHostname = syslogConfig.serverHostname
-        messageSender.defaultAppName = syslogConfig.appName
-        messageSender.defaultFacility = syslogConfig.facility
-        messageSender.defaultSeverity = syslogConfig.severity
-        messageSender.setSyslogServerHostname(syslogConfig.serverHostname)
-        messageSender.setSyslogServerPort(syslogConfig.serverPort.toInt())
-        messageSender.messageFormat = syslogConfig.messageFormat
-
-        this.messageSender = messageSender
-        currentConfig = syslogConfig
     }
 }

@@ -41,6 +41,14 @@ dependencies) are available.
 
 ## 2. How to Use It
 
+1. [Download the plugins](#downloading-the-plugins). At least the core plugin and then the AMQP, HTTP or Syslog plugins according to your choice. The name of the plugins should be renamed to remove the version number and the `-all` suffix (for example `keycloak-webhook-provider-core.jar` instead of `keycloak-webhook-provider-core-${VERSION}-all.jar`).
+2. Copy the plugins in KeyCloaks' `/opt/keycloak/providers` folder. See [Docker](#a-docker) and [Kubernetes](#b-kubernetes) configuration examples below.
+3. Add the [environment variables](#3-environment-variables) to configure the webhook providers.
+4. Add the `webhook-http` event listener in KeyCloak's interface in "Realms Settings" > "Events"
+
+<img width="1920" height="963" alt="image" src="https://github.com/user-attachments/assets/7a953f5c-0bd4-42fc-8a53-55e7cf8809dc" />
+
+
 ### Downloading the Plugins
 
 Download the latest release artifacts (shaded JARs) from the GitHub releases page. For example, using `curl`:

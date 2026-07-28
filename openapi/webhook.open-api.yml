@@ -71,6 +71,8 @@ components:
           type: string
         representation:
           type: string
+        sessionId:
+          type: string
       required:
         - type
         - realmId

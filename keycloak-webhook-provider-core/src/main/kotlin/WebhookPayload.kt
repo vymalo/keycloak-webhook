@@ -5,7 +5,7 @@
     "UnusedImport"
 )
 
-package com.vymalo.keycloak.webhook
+package com.vymalo.keycloak.webhook.core
 
 import com.google.gson.annotations.SerializedName
 

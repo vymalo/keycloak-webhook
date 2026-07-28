@@ -18,7 +18,7 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@v3
+        uses: gradle/actions/wrapper-validation@v3
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v3
         with:
@@ -27,7 +27,7 @@ jobs:
         run: |
           mkdir -p dist
           cp */build/libs/*.jar ./
-        
+
       - name: Archive Artifacts
         uses: actions/upload-artifact@v7
         with:

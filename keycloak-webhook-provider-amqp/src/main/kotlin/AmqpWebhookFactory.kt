@@ -1,3 +1,7 @@
-package com.vymalo.keycloak.webhook
+package com.vymalo.keycloak.webhook.amqp
 
-open class AmqpWebhookFactory : AbstractWebhookEventListenerFactory(AmqpWebhookHandler())
+import com.vymalo.keycloak.webhook.core.AbstractWebhookEventListenerFactory
+
+open class AmqpWebhookFactory : AbstractWebhookEventListenerFactory(::AmqpWebhookHandler) {
+    override fun getId(): String = AmqpWebhookHandler.PROVIDER_ID
+}

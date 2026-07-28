@@ -1,8 +1,6 @@
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
-
 plugins {
     kotlin("jvm")
-    id("com.github.johnrengelman.shadow") version "8.1.1"
+    id("com.gradleup.shadow") version "9.4.2"
 }
 
 group = "com.vymalo.keycloak.webhook"
@@ -18,7 +16,7 @@ dependencies {
     implementation(project(":keycloak-webhook-provider-core"))
 
     implementation("org.keycloak", "keycloak-services", "26.4.0")
-    
+
     implementation("com.google.code.gson", "gson", "2.12.1")
     implementation("com.cloudbees", "syslog-java-client", "1.1.7")
 }
@@ -31,10 +29,9 @@ kotlin {
 }
 
 tasks {
-    val shadowJar by existing(ShadowJar::class) {
+    shadowJar {
         dependencies {
             include(dependency("com.cloudbees:syslog-java-client"))
         }
-        dependsOn(build)
     }
 }

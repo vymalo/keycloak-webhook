@@ -1,1 +1,1 @@
-com.vymalo.keycloak.webhook.HttpWebhookFactory
+com.vymalo.keycloak.webhook.http.HttpWebhookFactory

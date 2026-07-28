@@ -78,6 +78,9 @@ services:
       WEBHOOK_HTTP_BASE_PATH: "http://prism:4010"
       WEBHOOK_HTTP_AUTH_USERNAME: "admin"
       WEBHOOK_HTTP_AUTH_PASSWORD: "password"
+      # Or use a realm-signed bearer token instead of basic auth
+      # WEBHOOK_HTTP_AUTH_AUDIENCE: "my-api"
+      # WEBHOOK_HTTP_AUTH_TTL_SECONDS: "60"
       # AMQP Provider Configuration
       WEBHOOK_AMQP_HOST: rabbitmq
       WEBHOOK_AMQP_USERNAME: username
@@ -165,6 +168,11 @@ spec:
               value: "admin"
             - name: WEBHOOK_HTTP_AUTH_PASSWORD
               value: "password"
+            # Or use a realm-signed bearer token instead of basic auth
+            # - name: WEBHOOK_HTTP_AUTH_AUDIENCE
+            #   value: "my-api"
+            # - name: WEBHOOK_HTTP_AUTH_TTL_SECONDS
+            #   value: "60"
             - name: WEBHOOK_AMQP_HOST
               value: "rabbitmq"
             - name: WEBHOOK_AMQP_USERNAME
@@ -192,18 +200,67 @@ spec:
 
 ---
 
-## 3. Environment Variables
+## 3. Configuration
+
+The plugin now supports two configuration sources:
+
+- Client attributes on the resolved Keycloak client for the event.
+- Environment variables or JVM system properties as a fallback.
+
+Client attributes take precedence when both are present.
+
+### Client Attributes
+
+For user events, the plugin first uses `session.getContext().getClient()` and falls back to the event `clientId` when
+needed. For admin events, it uses `event.authDetails.clientId` when available.
+
+This allows per-client webhook routing and auth settings without running separate Keycloak instances.
+
+Example client attributes:
+
+```text
+WEBHOOK_EVENTS_TAKEN=LOGIN,REGISTER
+WEBHOOK_HTTP_BASE_PATH=http://prism:4010
+WEBHOOK_HTTP_AUTH_AUDIENCE=my-api
+WEBHOOK_HTTP_AUTH_TTL_SECONDS=60
+```
+
+If no client can be resolved for an event, the plugin falls back to environment variables or system properties.
+
+### Debug Logging
+
+To log skipped webhook deliveries caused by missing required configuration, enable DEBUG logging for the plugin package
+using [Keycloak's category-specific logging configuration](https://www.keycloak.org/server/logging#_configuring_category_specific_log_levels):
+
+```yaml
+environment:
+  KC_LOG_LEVEL: "INFO,com.vymalo.keycloak.webhook:DEBUG"
+```
+
+Keycloak will then log messages such as `Could not send webhook: Missing required webhook configuration
+'WEBHOOK_HTTP_BASE_PATH' for client 'my-client'` without a stack trace.
+
+### Environment Variables
 
 ### HTTP Provider
 
 - **`WEBHOOK_HTTP_BASE_PATH`**  
-  Coma-separated list of endpoint URLs where webhook requests are sent.
+  Comma-separated list of endpoint URLs where webhook requests are sent.
 
 - **`WEBHOOK_HTTP_AUTH_USERNAME` (optional)**  
-  Basic auth username.
+  Basic auth username. Must be set together with `WEBHOOK_HTTP_AUTH_PASSWORD`.
 
 - **`WEBHOOK_HTTP_AUTH_PASSWORD` (optional)**  
-  Basic auth password.
+  Basic auth password. Must be set together with `WEBHOOK_HTTP_AUTH_USERNAME`.
+
+- **`WEBHOOK_HTTP_AUTH_AUDIENCE` (optional)**  
+  Enables bearer auth using an internally signed Keycloak JWT. The configured value is written as the token audience.
+
+- **`WEBHOOK_HTTP_AUTH_TTL_SECONDS` (optional)**  
+  Lifetime of the internally signed bearer token in seconds. Defaults to `60`.
+
+If `WEBHOOK_HTTP_AUTH_AUDIENCE` is set, the HTTP provider sends a bearer token. Otherwise it uses basic auth when
+username and password are configured.
 
 ### AMQP Provider
 

@@ -37,6 +37,8 @@ fun String.bf(compare: String = "true") = this.cf() == compare
 fun String.cff() = getConfig(this)!!
 fun String.cfe(defaultValue: () -> String) = getConfig(this).orEmpty().ifEmpty(defaultValue)
 
+class MissingConfigurationException(message: String) : IllegalStateException(message)
+
 class ClientAttributeConfig private constructor(
     val client: ClientModel?
 ) {
@@ -54,7 +56,7 @@ class ClientAttributeConfig private constructor(
             ?: key.cf()?.trim()?.takeIf { it.isNotEmpty() }
 
     fun requiredString(key: String): String = string(key)
-        ?: throw IllegalStateException("Missing required webhook configuration '$key'${clientSuffix()}")
+        ?: throw MissingConfigurationException("Missing required webhook configuration '$key'${clientSuffix()}")
 
     fun list(key: String): List<String>? = string(key)
         ?.split(',')
@@ -63,7 +65,7 @@ class ClientAttributeConfig private constructor(
         ?.takeIf { it.isNotEmpty() }
 
     fun requiredList(key: String): List<String> = list(key)
-        ?: throw IllegalStateException("Missing required webhook configuration '$key'${clientSuffix()}")
+        ?: throw MissingConfigurationException("Missing required webhook configuration '$key'${clientSuffix()}")
 
     fun boolean(key: String, defaultValue: Boolean = false): Boolean {
         val value = string(key) ?: return defaultValue

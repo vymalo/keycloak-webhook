@@ -1,6 +1,7 @@
 package com.vymalo.keycloak.webhook.core
 
 import com.vymalo.keycloak.webhook.core.helper.ClientAttributeConfig
+import com.vymalo.keycloak.webhook.core.helper.MissingConfigurationException
 import com.vymalo.keycloak.webhook.core.helper.eventsTakenKey
 import org.keycloak.Config
 import org.keycloak.events.Event
@@ -113,6 +114,8 @@ abstract class AbstractWebhookEventListenerFactory(
             try {
                 LOG.debug("Sending [{}] webhook for event type {}: {}", delegate.getId(), type, request)
                 delegate.sendWebhook(session, request)
+            } catch (e: MissingConfigurationException) {
+                LOG.debug("Could not send webhook: {}", e.message)
             } catch (e: Throwable) {
                 LOG.error("Could not send webhook", e)
             }

@@ -227,6 +227,19 @@ WEBHOOK_HTTP_AUTH_TTL_SECONDS=60
 
 If no client can be resolved for an event, the plugin falls back to environment variables or system properties.
 
+### Debug Logging
+
+To log skipped webhook deliveries caused by missing required configuration, enable DEBUG logging for the plugin package
+using [Keycloak's category-specific logging configuration](https://www.keycloak.org/server/logging#_configuring_category_specific_log_levels):
+
+```yaml
+environment:
+  KC_LOG_LEVEL: "INFO,com.vymalo.keycloak.webhook:DEBUG"
+```
+
+Keycloak will then log messages such as `Could not send webhook: Missing required webhook configuration
+'WEBHOOK_HTTP_BASE_PATH' for client 'my-client'` without a stack trace.
+
 ### Environment Variables
 
 ### HTTP Provider

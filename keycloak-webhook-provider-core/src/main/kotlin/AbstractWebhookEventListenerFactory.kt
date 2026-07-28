@@ -1,7 +1,7 @@
-package com.vymalo.keycloak.webhook
+package com.vymalo.keycloak.webhook.core
 
-import com.vymalo.keycloak.webhook.helper.cf
-import com.vymalo.keycloak.webhook.helper.eventsTakenKey
+import com.vymalo.keycloak.webhook.core.helper.cf
+import com.vymalo.keycloak.webhook.core.helper.eventsTakenKey
 import org.keycloak.Config
 import org.keycloak.events.Event
 import org.keycloak.events.EventListenerProvider

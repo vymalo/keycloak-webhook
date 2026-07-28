@@ -1,4 +1,4 @@
-package com.vymalo.keycloak.webhook.helper
+package com.vymalo.keycloak.webhook.core.helper
 
 const val eventsTakenKey = "WEBHOOK_EVENTS_TAKEN"
 

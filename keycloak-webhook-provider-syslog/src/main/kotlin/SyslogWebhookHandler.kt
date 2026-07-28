@@ -1,10 +1,12 @@
-package com.vymalo.keycloak.webhook
+package com.vymalo.keycloak.webhook.syslog
 
 import com.cloudbees.syslog.sender.AbstractSyslogMessageSender
 import com.cloudbees.syslog.sender.TcpSyslogMessageSender
 import com.cloudbees.syslog.sender.UdpSyslogMessageSender
 import com.google.gson.Gson
-import com.vymalo.keycloak.webhook.models.SyslogConfig
+import com.vymalo.keycloak.webhook.core.WebhookHandler
+import com.vymalo.keycloak.webhook.core.WebhookPayload
+import com.vymalo.keycloak.webhook.syslog.models.SyslogConfig
 import org.slf4j.LoggerFactory
 
 

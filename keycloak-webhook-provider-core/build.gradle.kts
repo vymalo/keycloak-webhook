@@ -1,8 +1,6 @@
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
-
 plugins {
     kotlin("jvm")
-    id("com.github.johnrengelman.shadow") version "8.1.1"
+    id("com.gradleup.shadow") version "9.4.2"
 }
 
 group = "com.vymalo.keycloak.webhook"
@@ -30,11 +28,10 @@ kotlin {
 }
 
 tasks {
-    val shadowJar by existing(ShadowJar::class) {
+    shadowJar {
         dependencies {
             include(dependency("org.jetbrains.kotlin:kotlin-stdlib"))
             include(dependency("com.google.code.gson:gson"))
         }
-        dependsOn(build)
     }
 }

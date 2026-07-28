@@ -1,9 +1,11 @@
-package com.vymalo.keycloak.webhook
+package com.vymalo.keycloak.webhook.http
 
 import com.vymalo.keycloak.openapi.client.handler.WebhookApi
 import com.vymalo.keycloak.openapi.client.infrastructure.ApiClient
-import com.vymalo.keycloak.webhook.models.HttpConfig
-import com.vymalo.keycloak.webhook.utils.toWebhookRequest
+import com.vymalo.keycloak.webhook.core.WebhookHandler
+import com.vymalo.keycloak.webhook.core.WebhookPayload
+import com.vymalo.keycloak.webhook.http.models.HttpConfig
+import com.vymalo.keycloak.webhook.http.utils.toWebhookRequest
 import org.slf4j.LoggerFactory
 
 class HttpWebhookHandler : WebhookHandler {

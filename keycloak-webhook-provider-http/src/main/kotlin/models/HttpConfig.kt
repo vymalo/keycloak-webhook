@@ -1,6 +1,6 @@
-package com.vymalo.keycloak.webhook.models
+package com.vymalo.keycloak.webhook.http.models
 
-import com.vymalo.keycloak.webhook.helper.*
+import com.vymalo.keycloak.webhook.core.helper.*
 
 data class HttpConfig(
     val username: String?,

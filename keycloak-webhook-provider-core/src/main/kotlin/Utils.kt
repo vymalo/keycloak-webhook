@@ -1,4 +1,4 @@
-package com.vymalo.keycloak.webhook
+package com.vymalo.keycloak.webhook.core
 
 import org.keycloak.events.Event
 import org.keycloak.events.admin.AdminEvent

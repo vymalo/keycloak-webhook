@@ -1,5 +1,7 @@
 package com.vymalo.keycloak.webhook
 
+import com.vymalo.keycloak.webhook.helper.*
+import com.vymalo.keycloak.webhook.models.AmqpConfig
 import com.vymalo.keycloak.webhook.testing.Fixtures
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -11,6 +13,18 @@ import kotlin.test.assertNull
  * guards what goes out.
  */
 class AmqpWireTest {
+
+    /** The original settings only; every newer option stays off. */
+    private fun config(vararg extra: Pair<String, String>): AmqpConfig {
+        val entries = mapOf(
+            amqpUsernameKey to "keycloak",
+            amqpPasswordKey to "secret",
+            amqpHostKey to "rabbit",
+            amqpPortKey to "5672",
+            amqpExchangeKey to "keycloak",
+        ) + extra
+        return AmqpConfig.from(ConfigSource { entries[it] })
+    }
 
     @Test
     fun `routing keys are KC_CLIENT dot realm, client, user and type`() {
@@ -25,12 +39,20 @@ class AmqpWireTest {
 
     @Test
     fun `message properties are JSON for Spring consumers, transient and without an id`() {
-        val props = AmqpTransport.MESSAGE_PROPERTIES
+        val props = AmqpTransport.messageProperties(config())
         assertEquals("Keycloak/Kotlin", props.appId)
         assertEquals("application/json", props.contentType)
         assertEquals("UTF-8", props.contentEncoding)
         assertEquals(mapOf<String, Any>("__TypeId__" to "com.vymalo.keycloak.webhook.WebhookPayload"), props.headers)
         assertNull(props.deliveryMode)
         assertNull(props.messageId)
+    }
+
+    @Test
+    fun `WEBHOOK_AMQP_PERSISTENT changes only the delivery mode`() {
+        val plain = AmqpTransport.messageProperties(config())
+        val persistent = AmqpTransport.messageProperties(config(amqpPersistentKey to "true"))
+        assertEquals(2, persistent.deliveryMode)
+        assertEquals(plain.builder().deliveryMode(2).build().toString(), persistent.toString())
     }
 }

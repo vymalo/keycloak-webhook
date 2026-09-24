@@ -44,6 +44,17 @@ class ConfigReaderTest {
         assertEquals(listOf(true, false, false, false), flags)
     }
 
+    @Test
+    fun `cross-key checks join the other problems`() {
+        val error = assertFailsWith<ConfigException> {
+            source("TRUSTSTORE" to "ca.p12").read {
+                required("HOST")
+                check(flag("SSL")) { "TRUSTSTORE needs SSL=true" }
+            }
+        }
+        assertEquals(listOf("HOST is required", "TRUSTSTORE needs SSL=true"), error.problems)
+    }
+
     private enum class Format { RFC_3164, RFC_5424 }
 
     @Test

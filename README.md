@@ -219,7 +219,7 @@ with a single error that lists every problem key, and the next event tries again
 ### AMQP Provider
 
 - **`WEBHOOK_AMQP_HOST`**  
-  RabbitMQ server hostname.
+  RabbitMQ server hostname. Not needed when `WEBHOOK_AMQP_ADDRESSES` is set.
 
 - **`WEBHOOK_AMQP_USERNAME`**  
   Username for RabbitMQ.
@@ -228,7 +228,7 @@ with a single error that lists every problem key, and the next event tries again
   Password for RabbitMQ.
 
 - **`WEBHOOK_AMQP_PORT`**  
-  Port for RabbitMQ.
+  Port for RabbitMQ. Not needed when `WEBHOOK_AMQP_ADDRESSES` is set.
 
 - **`WEBHOOK_AMQP_VHOST` (optional)**  
   Virtual host for RabbitMQ. Defaults to `/`.
@@ -237,8 +237,8 @@ with a single error that lists every problem key, and the next event tries again
   Exchange name for RabbitMQ. The exchange must already exist; the plugin does not declare it.
 
 - **`WEBHOOK_AMQP_SSL` (optional)**  
-  `"true"` enables TLS; any other value (including `"yes"`) leaves it off. Note that TLS currently accepts any server
-  certificate.
+  `"true"` enables TLS; any other value (including `"yes"`) leaves it off. Without
+  `WEBHOOK_AMQP_SSL_TRUSTSTORE`, TLS accepts any server certificate, and the plugin logs a warning saying so.
 
 - **`WEBHOOK_AMQP_ENABLE_PUBLISHER_CONFIRM` (optional)**  
   `"true"` makes every publish wait until the broker confirms the message, so a lost message is logged as an error
@@ -246,6 +246,34 @@ with a single error that lists every problem key, and the next event tries again
 
 - **`WEBHOOK_AMQP_PUBLISHER_CONFIRM_TIMEOUT` (optional)**  
   How long to wait for a confirm, in milliseconds. Defaults to `5000`.
+
+The following settings are all optional. Leaving them unset keeps the behaviour described above.
+
+- **`WEBHOOK_AMQP_ADDRESSES`**  
+  Comma-separated `host` or `host:port` list for a RabbitMQ cluster, e.g. `rabbit-1:5672,rabbit-2:5672`. Replaces
+  `WEBHOOK_AMQP_HOST` and `WEBHOOK_AMQP_PORT`. On every (re)connect the client tries the brokers in random order and
+  skips the ones that are down. An entry without a port uses `5672`, or `5671` with TLS.
+
+- **`WEBHOOK_AMQP_HEARTBEAT_SECONDS`**  
+  AMQP heartbeat interval. Defaults to the client's `60`. Lower it if a load balancer or firewall drops idle
+  connections sooner.
+
+- **`WEBHOOK_AMQP_SSL_TRUSTSTORE`**, **`WEBHOOK_AMQP_SSL_TRUSTSTORE_PASSWORD`**, **`WEBHOOK_AMQP_SSL_TRUSTSTORE_TYPE`**  
+  Path, password and type (default `PKCS12`) of a truststore holding the CA that signed the broker's certificate.
+  When set, the broker's certificate and host name are verified. Requires `WEBHOOK_AMQP_SSL="true"`. If a file can't
+  be loaded, the listener fails to start with an error naming it. If TLS traffic passes through something that
+  re-signs it (a corporate proxy, or antivirus "HTTPS scanning"), the truststore needs *that* CA instead.
+
+- **`WEBHOOK_AMQP_PERSISTENT`**  
+  `"true"` publishes messages as persistent, so durable queues keep them across broker restarts.
+
+- **`WEBHOOK_AMQP_MESSAGE_ID`**  
+  `"true"` gives every message a random UUID `message-id`, so consumers can recognise redeliveries.
+
+- **`WEBHOOK_AMQP_DECLARE_EXCHANGE`**  
+  `"true"` declares `WEBHOOK_AMQP_EXCHANGE` as a durable topic exchange on connect, so it no longer has to exist
+  beforehand. If an exchange with that name already exists with other settings, it is used as it is and a warning is
+  logged.
 
 Messages are published with the routing key `KC_CLIENT.<realmId>.<clientId>.<userId>.<type>` (missing ids become
 `xxx`), so consumers can bind on any part, e.g. `KC_CLIENT.*.*.*.LOGIN`.
@@ -359,7 +387,9 @@ We welcome contributions! To get started:
 - Run the tests with `./gradlew test`. The AMQP broker tests start RabbitMQ through
   [Testcontainers](https://testcontainers.com). Docker is optional locally: without it those tests are skipped
   (listed as `SKIPPED`), and everything else still runs. With Docker you can still skip them for a quicker run by
-  setting `SKIP_DOCKER_TESTS=true`. CI never skips them.
+  setting `SKIP_DOCKER_TESTS=true`. CI never skips them. If your antivirus scans HTTPS traffic (AVG, Avast and
+  others do by default), it also re-signs the tests' local TLS connections: the TLS test that verifies the broker's
+  certificate then skips itself and names the interceptor.
 
 3. **Follow Code Conventions:**
 

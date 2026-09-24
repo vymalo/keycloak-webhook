@@ -55,6 +55,11 @@ class ConfigReader internal constructor(private val source: ConfigSource) {
             ?: values.first().also { problems += "$key must be one of ${values.joinToString { it.name }}, got '$raw'" }
     }
 
+    /** Records [problem] unless [condition] holds; for rules that span several keys. */
+    fun check(condition: Boolean, problem: () -> String) {
+        if (!condition) problems += problem()
+    }
+
     private fun <N : Number> number(key: String, default: N?, parse: (String) -> N?): N? {
         val raw = source[key].orEmpty()
         if (raw.isEmpty()) return default ?: null.also { problems += "$key is required" }

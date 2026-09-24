@@ -26,6 +26,11 @@
 
 ### Added
 
+- AMQP opt-ins, each off unless set: `WEBHOOK_AMQP_ADDRESSES` for clusters, `WEBHOOK_AMQP_HEARTBEAT_SECONDS`,
+  certificate verification with `WEBHOOK_AMQP_SSL_TRUSTSTORE` (plus `_PASSWORD`, `_TYPE`), persistent messages
+  (`WEBHOOK_AMQP_PERSISTENT`), per-message ids (`WEBHOOK_AMQP_MESSAGE_ID`) and declaring the exchange
+  (`WEBHOOK_AMQP_DECLARE_EXCHANGE`)
+- A warning when TLS is on without a truststore, since the broker's certificate is then not verified
 - Behaviour tests for every provider, including RabbitMQ through Testcontainers, run by CI on every push
 - README: publisher confirm settings, defaults, routing keys, and how delivery behaves when a destination is down
 

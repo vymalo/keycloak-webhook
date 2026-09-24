@@ -5,10 +5,17 @@ import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.Channel
 import com.rabbitmq.client.Connection
 import com.rabbitmq.client.ConnectionFactory
+import com.vymalo.keycloak.webhook.helper.amqpSsl
+import com.vymalo.keycloak.webhook.helper.amqpSslTruststoreKey
 import com.vymalo.keycloak.webhook.models.AmqpConfig
 import org.keycloak.utils.MediaType
 import org.slf4j.LoggerFactory
+import java.io.File
+import java.security.KeyStore
+import java.util.UUID
 import java.util.concurrent.TimeoutException
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManagerFactory
 
 /**
  * Publishes each event as one message to a RabbitMQ exchange.
@@ -29,11 +36,25 @@ class AmqpTransport(private val config: AmqpConfig) : Transport {
         username = config.username
         password = config.password
         virtualHost = config.vHost
-        host = config.host
-        port = config.port
         isAutomaticRecoveryEnabled = true
-        if (config.ssl) useSslProtocol()
+        config.heartbeatSeconds?.let { requestedHeartbeat = it }
+        when {
+            config.truststore != null -> {
+                useSslProtocol(sslContext(config.truststore))
+                enableHostnameVerification()
+            }
+            config.ssl -> {
+                useSslProtocol()
+                logger.warn(
+                    "{} is on without {}: the broker's certificate is not verified",
+                    amqpSsl, amqpSslTruststoreKey,
+                )
+            }
+        }
     }
+
+    /** Built once: identical for every message, except the message id when that is on. */
+    private val baseProperties = messageProperties(config)
 
     // Replaced only under `this`; volatile so a healthy channel is found without taking a lock.
     @Volatile
@@ -63,7 +84,8 @@ class AmqpTransport(private val config: AmqpConfig) : Transport {
                 channel.basicPublish(
                     config.exchange,
                     routingKey(payload),
-                    MESSAGE_PROPERTIES,
+                    if (config.messageId) baseProperties.builder().messageId(UUID.randomUUID().toString()).build()
+                    else baseProperties,
                     gson.toJson(payload).toByteArray(Charsets.UTF_8),
                 )
                 if (config.publisherConfirm) channel.waitForConfirms(config.confirmTimeoutMs)
@@ -130,7 +152,8 @@ class AmqpTransport(private val config: AmqpConfig) : Transport {
      */
     private fun connect(): Channel? {
         synchronized(this) { closeQuietly() }
-        val connection = connectionFactory.newConnection()
+        val connection = connectionFactory.newConnection(config.addresses)
+        if (config.declareExchange) declareExchange(connection)
         val channel = try {
             connection.createChannel().also { if (config.publisherConfirm) it.confirmSelect() }
         } catch (e: Exception) {
@@ -146,6 +169,20 @@ class AmqpTransport(private val config: AmqpConfig) : Transport {
             this.channel = channel
         }
         return channel
+    }
+
+    /**
+     * Declares the exchange on a throwaway channel: if it already exists with other
+     * settings, the broker closes the channel it was asked on, and that must not be
+     * the one we publish on. That case is only logged; publishing uses it as it is.
+     */
+    private fun declareExchange(connection: Connection) {
+        if (config.exchange.isEmpty()) return // the default exchange always exists and can't be declared
+        runCatching { connection.createChannel().use { it.exchangeDeclare(config.exchange, "topic", true) } }
+            .onSuccess { logger.debug("Exchange '{}' declared (durable topic)", config.exchange) }
+            .onFailure {
+                logger.warn("Could not declare exchange '{}', publishing to it as it is: {}", config.exchange, it.message)
+            }
     }
 
     override fun close() {
@@ -184,15 +221,29 @@ class AmqpTransport(private val config: AmqpConfig) : Transport {
         private val logger = LoggerFactory.getLogger(AmqpTransport::class.java)
 
         /**
-         * The same for every message. `__TypeId__` is the header Spring AMQP reads to pick
-         * the target class, so Spring consumers can deserialize without extra mapping.
+         * `__TypeId__` is the header Spring AMQP reads to pick the target class, so Spring
+         * consumers can deserialize without extra mapping.
          */
-        internal val MESSAGE_PROPERTIES: BasicProperties = BasicProperties.Builder()
+        internal fun messageProperties(config: AmqpConfig): BasicProperties = BasicProperties.Builder()
             .appId("Keycloak/Kotlin")
             .headers(mapOf<String, Any>("__TypeId__" to WebhookPayload::class.java.name))
             .contentType(MediaType.APPLICATION_JSON)
             .contentEncoding("UTF-8")
+            .apply { if (config.persistent) deliveryMode(2) }
             .build()
+
+        /** Trusts exactly the certificates in the configured store; a bad path or password is a setup error, logged once. */
+        private fun sslContext(truststore: AmqpConfig.Truststore): SSLContext {
+            val store = try {
+                KeyStore.getInstance(truststore.type).apply {
+                    File(truststore.path).inputStream().use { load(it, truststore.password?.toCharArray()) }
+                }
+            } catch (e: Exception) {
+                throw IllegalStateException("Could not load $amqpSslTruststoreKey '${truststore.path}': ${e.message}", e)
+            }
+            val trust = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply { init(store) }
+            return SSLContext.getInstance("TLS").apply { init(null, trust.trustManagers, null) }
+        }
 
         /** `KC_CLIENT.<realm>.<client>.<user>.<type>` so consumers can bind on any part, e.g. `KC_CLIENT.*.*.*.LOGIN`. */
         internal fun routingKey(payload: WebhookPayload) =

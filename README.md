@@ -259,10 +259,10 @@ The following settings are all optional. Leaving them unset keeps the behaviour 
   connections sooner.
 
 - **`WEBHOOK_AMQP_CONNECTION_TIMEOUT`**  
-  How long opening a connection to a broker may take, in milliseconds. Defaults to the client's `60000`. Lower it
-  if a broker host can disappear without refusing connections (a dead cluster node, a dropped VM): in sync mode the
-  login that triggers the reconnect waits for it, up to 3 times. A broker that accepts the connection and then hangs
-  is cut off by the client's handshake timeout (10 s) instead.
+  How long opening a connection to a broker may take, in milliseconds. Defaults to the client's `60000` (`5000` in
+  async mode). Lower it if a broker host can disappear without refusing connections (a dead cluster node, a dropped
+  VM): in sync mode the login that triggers the reconnect waits for it, up to 3 times. A broker that accepts the
+  connection and then hangs is cut off by the client's handshake timeout (10 s) instead.
 
 - **`WEBHOOK_AMQP_SSL_TRUSTSTORE`**, **`WEBHOOK_AMQP_SSL_TRUSTSTORE_PASSWORD`**, **`WEBHOOK_AMQP_SSL_TRUSTSTORE_TYPE`**  
   Path, password and type (default `PKCS12`) of a truststore holding the CA that signed the broker's certificate.
@@ -280,6 +280,17 @@ The following settings are all optional. Leaving them unset keeps the behaviour 
   `"true"` declares `WEBHOOK_AMQP_EXCHANGE` as a durable topic exchange on connect, so it no longer has to exist
   beforehand. If an exchange with that name already exists with other settings, it is used as it is and a warning is
   logged.
+
+- **`WEBHOOK_AMQP_PUBLISH_MODE`**
+  `sync` (the default) publishes on the Keycloak request thread. `async` hands events to a background publisher, so a
+  login never waits for RabbitMQ. See [Delivery and Lifecycle](#delivery-and-lifecycle).
+
+- **`WEBHOOK_AMQP_BUFFER_CAPACITY`**
+  Async only: how many events are kept in memory while the broker is slow or unreachable. Defaults to `1000`. When
+  it's full, the oldest event is dropped to make room.
+
+- **`WEBHOOK_AMQP_INFLIGHT_CAPACITY`**
+  Async with publisher confirms only: how many messages may wait for their confirm at once. Defaults to `1000`.
 
 Messages are published with the routing key `KC_CLIENT.<realmId>.<clientId>.<userId>.<type>` (missing ids become
 `xxx`), so consumers can bind on any part, e.g. `KC_CLIENT.*.*.*.LOGIN`.
@@ -363,6 +374,18 @@ Keycloak, so it cannot fail a login or an admin action:
   own, and for 5 seconds after a failed one, events are dropped without trying, so a dead broker doesn't stack up
   logins. Publishing is serialized, so with publisher confirms on, a slow broker caps the event rate at one confirm
   round trip at a time.
+- **AMQP with `WEBHOOK_AMQP_PUBLISH_MODE=async`:** the request thread only adds the event to an in-memory buffer; one
+  background thread sends it and reconnects (with backoff) when needed.
+  - With `WEBHOOK_AMQP_ENABLE_PUBLISHER_CONFIRM="true"`, delivery is *at least once*. A message that isn't confirmed
+    within `WEBHOOK_AMQP_PUBLISHER_CONFIRM_TIMEOUT` is sent again on a new connection. Consumers may therefore see
+    duplicates; `WEBHOOK_AMQP_MESSAGE_ID="true"` gives each event one id that stays the same across resends, so they
+    can drop them.
+  - Without confirms, a message counts as sent once it's written to the connection, as in sync mode.
+  - A message the broker refuses (a nack, or the channel closed over it, e.g. because the exchange doesn't exist) is
+    tried 5 times, then dropped with an error in the log.
+  - Events only live in memory: if the buffer is full the oldest are dropped, and a crash loses what's buffered.
+  - On shutdown the publisher gets up to 5 seconds to send what's left, plus up to 5 more if the broker stops
+    answering. It then logs how much was lost, along with totals for reconnects, resends and drops.
 - **HTTP:** every URL is tried up to 3 times, 1 second apart, one URL after another.
 - **Syslog:** UDP is fire-and-forget; the TCP sender reconnects on its own.
 

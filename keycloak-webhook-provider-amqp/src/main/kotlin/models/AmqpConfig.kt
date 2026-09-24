@@ -35,7 +35,15 @@ data class AmqpConfig(
     val messageId: Boolean,
     /** Declares the exchange as a durable topic exchange on connect, instead of requiring it to exist. */
     val declareExchange: Boolean,
+    /** Where publishing happens: on the Keycloak request thread (the default), or in the background. */
+    val publishMode: PublishMode,
+    /** Async only: events kept while the broker is slow or away; beyond that, the oldest are dropped. */
+    val bufferCapacity: Int,
+    /** Async only, with confirms: messages sent but not yet confirmed, at most. */
+    val inflightCapacity: Int,
 ) {
+    enum class PublishMode { SYNC, ASYNC }
+
     data class Truststore(val path: String, val password: String?, val type: String) {
         /** Keeps the password out of logs and exception messages. */
         override fun toString() = "Truststore(path=$path, type=$type)"
@@ -45,8 +53,9 @@ data class AmqpConfig(
     override fun toString() =
         "AmqpConfig(user=$username, addresses=$addresses, vHost=$vHost, ssl=$ssl, truststore=$truststore, " +
             "exchange=$exchange, publisherConfirm=$publisherConfirm, confirmTimeoutMs=$confirmTimeoutMs, " +
-            "heartbeatSeconds=$heartbeatSeconds, connectionTimeoutMs=$connectionTimeoutMs, persistent=$persistent, messageId=$messageId, " +
-            "declareExchange=$declareExchange)"
+            "heartbeatSeconds=$heartbeatSeconds, connectionTimeoutMs=$connectionTimeoutMs, persistent=$persistent, " +
+            "messageId=$messageId, declareExchange=$declareExchange, publishMode=$publishMode, " +
+            "bufferCapacity=$bufferCapacity, inflightCapacity=$inflightCapacity)"
 
     companion object {
         fun from(source: ConfigSource): AmqpConfig = source.read {
@@ -66,6 +75,9 @@ data class AmqpConfig(
                 persistent = flag(amqpPersistentKey),
                 messageId = flag(amqpMessageIdKey),
                 declareExchange = flag(amqpDeclareExchangeKey),
+                publishMode = enum(amqpPublishModeKey, PublishMode.values(), PublishMode.SYNC, ignoreCase = true),
+                bufferCapacity = positive(amqpBufferCapacityKey, default = 1_000),
+                inflightCapacity = positive(amqpInflightCapacityKey, default = 1_000),
             )
         }
 
@@ -83,6 +95,9 @@ data class AmqpConfig(
                 address
             }
         }
+
+        private fun ConfigReader.positive(key: String, default: Int): Int =
+            int(key, default).also { check(it > 0) { "$key must be greater than 0, got $it" } }
 
         /** A truststore only makes sense with TLS on; silently switching TLS on would surprise more than an error. */
         private fun ConfigReader.truststore(ssl: Boolean): Truststore? {

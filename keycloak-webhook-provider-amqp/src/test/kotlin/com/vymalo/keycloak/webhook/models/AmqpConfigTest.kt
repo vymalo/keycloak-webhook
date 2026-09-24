@@ -35,6 +35,29 @@ class AmqpConfigTest {
         assertFalse(config.persistent)
         assertFalse(config.messageId)
         assertFalse(config.declareExchange)
+        assertEquals(AmqpConfig.PublishMode.SYNC, config.publishMode)
+    }
+
+    @Test
+    fun `async mode with its capacities, case-insensitive`() {
+        val config = parse(amqpPublishModeKey to "Async", amqpBufferCapacityKey to "50", amqpInflightCapacityKey to "5")
+        assertEquals(AmqpConfig.PublishMode.ASYNC, config.publishMode)
+        assertEquals(50, config.bufferCapacity)
+        assertEquals(5, config.inflightCapacity)
+    }
+
+    @Test
+    fun `capacities must be positive and the mode known`() {
+        val error = assertFailsWith<ConfigException> {
+            parse(amqpPublishModeKey to "later", amqpBufferCapacityKey to "0")
+        }
+        assertEquals(
+            listOf(
+                "$amqpPublishModeKey must be one of SYNC, ASYNC, got 'later'",
+                "$amqpBufferCapacityKey must be greater than 0, got 0",
+            ),
+            error.problems,
+        )
     }
 
     @Test

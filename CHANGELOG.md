@@ -31,6 +31,10 @@
   (`WEBHOOK_AMQP_PERSISTENT`), per-message ids (`WEBHOOK_AMQP_MESSAGE_ID`) and declaring the exchange
   (`WEBHOOK_AMQP_DECLARE_EXCHANGE`)
 - `WEBHOOK_AMQP_CONNECTION_TIMEOUT` to stop waiting on an unreachable broker sooner than the client's 60 s
+- `WEBHOOK_AMQP_PUBLISH_MODE=async`: publishing on a background thread with an in-memory buffer
+  (`WEBHOOK_AMQP_BUFFER_CAPACITY`), so logins never wait for RabbitMQ. With publisher confirms, delivery is at least
+  once: unconfirmed messages are sent again after a reconnect or a confirm timeout, refused ones are retried 5 times,
+  and at most `WEBHOOK_AMQP_INFLIGHT_CAPACITY` wait for a confirm at once
 - A warning when TLS is on without a truststore, since the broker's certificate is then not verified
 - Behaviour tests for every provider, including RabbitMQ through Testcontainers, run by CI on every push
 - README: publisher confirm settings, defaults, routing keys, and how delivery behaves when a destination is down

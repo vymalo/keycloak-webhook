@@ -8,37 +8,69 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.TestMethodOrder
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
+/** One way of configuring the plugin's AMQP publishing, and what that setup promises. */
+enum class Variant(
+    val settings: Map<String, String>,
+    /** Every event arrives at least once, even across broker hangs and node failures, and logins don't wait. */
+    val atLeastOnce: Boolean,
+    /** A healthy broker gets each event exactly once (nothing is ever resent). */
+    val exactlyOnceWhenHealthy: Boolean,
+) {
+    /** Upstream's default: sync on the request thread, no confirms. */
+    SYNC(emptyMap(), atLeastOnce = false, exactlyOnceWhenHealthy = true),
+
+    /** Sync, waiting for each confirm. */
+    SYNC_CONFIRMS(mapOf("WEBHOOK_AMQP_ENABLE_PUBLISHER_CONFIRM" to "true"), atLeastOnce = false, exactlyOnceWhenHealthy = true),
+
+    /** Async without confirms: here to show what confirms add, not as a recommended setup. */
+    ASYNC(
+        mapOf(
+            "WEBHOOK_AMQP_PUBLISH_MODE" to "async",
+            "WEBHOOK_AMQP_MESSAGE_ID" to "true",
+            "WEBHOOK_AMQP_BUFFER_CAPACITY" to "10000",
+        ),
+        atLeastOnce = false, exactlyOnceWhenHealthy = true,
+    ),
+
+    /** Async with confirms: at least once, with ids to drop duplicates, and a buffer for outages. */
+    ASYNC_CONFIRMS(
+        mapOf(
+            "WEBHOOK_AMQP_PUBLISH_MODE" to "async",
+            "WEBHOOK_AMQP_ENABLE_PUBLISHER_CONFIRM" to "true",
+            "WEBHOOK_AMQP_MESSAGE_ID" to "true",
+            "WEBHOOK_AMQP_BUFFER_CAPACITY" to "10000",
+        ),
+        atLeastOnce = true, exactlyOnceWhenHealthy = false,
+    ),
+}
+
 /**
- * The same production scenarios for every AMQP setup, on the Keycloak version we run
- * ([ItSettings.keycloakVersion]). Each subclass is one setup and starts its own Keycloak
- * and RabbitMQ, so setups never share state and can be run on their own.
+ * The same production scenarios for every [Variant] on every [Topology], on the Keycloak version
+ * we run ([ItSettings.keycloakVersion]). Each subclass is one combination and starts its own
+ * Keycloak and RabbitMQ, so they never share state and can be run on their own.
  *
- * Scenarios run in order: the last one stops Keycloak to check the shutdown path.
+ * Scenarios run in order; the last one stops Keycloak to check the shutdown path.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
-abstract class AmqpScenarios(private val settings: Map<String, String>) {
+abstract class AmqpScenarios(private val variant: Variant, private val topology: Topology = Topology.SINGLE) {
 
-    /** True when every event must arrive at least once even if the broker hangs for a while. */
-    protected abstract val survivesBrokerHang: Boolean
-
-    /** True when a healthy run must deliver each event exactly once (no resends happen). */
-    protected abstract val exactlyOnceWhenHealthy: Boolean
-
-    private lateinit var stack: Stack
+    protected lateinit var stack: Stack
     private lateinit var api: KeycloakApi
     private lateinit var realmId: String
 
     private val realm = "webhook-it"
     private val users = 200
+    protected val name: String get() = javaClass.simpleName
 
     @BeforeAll
     fun start() {
-        stack = Stack(ItSettings.keycloakVersion, settings).start()
+        stack = Stack(ItSettings.keycloakVersion, variant.settings, topology).start()
         api = KeycloakApi(stack.keycloakUrl)
         api.createRealm(KeycloakApi.testRealm(realm, users))
         realmId = api.realmId(realm)
@@ -95,10 +127,10 @@ abstract class AmqpScenarios(private val settings: Map<String, String>) {
             } finally {
                 stack.unpauseBroker()
             }
-            println("[${javaClass.simpleName}] logins while the broker hangs: $report")
+            println("[$name] logins while the broker hangs: $report")
             assertEquals(0, report.failedRequests, "every login must still succeed")
 
-            if (survivesBrokerHang) {
+            if (variant.atLeastOnce) {
                 assertTrue(report.percentile(0.95) < 2_000, "logins shouldn't wait for the broker: $report")
                 val arrived = observer.awaitCondition(120_000) {
                     observer.messages.mapNotNull { it.username }.containsAll(hanging)
@@ -113,84 +145,38 @@ abstract class AmqpScenarios(private val settings: Map<String, String>) {
     fun `organic traffic arrives complete`() {
         Observer(stack).use { observer ->
             val report = Traffic(api, realm, users).run(ItSettings.events, ItSettings.concurrency)
-            println("[${javaClass.simpleName}] sent: $report")
+            println("[$name] sent: $report")
             assertEquals(0, report.failedRequests, "Keycloak itself should have answered every request")
 
             val complete = observer.awaitDistinct(report.expectedEvents, 600_000)
             val arrived = observer.distinctByType()
-            println(
-                "[${javaClass.simpleName}] arrived: ${observer.distinctEvents} distinct events, " +
-                    "${observer.duplicates} duplicates; by type: $arrived"
-            )
+            println("[$name] arrived: ${observer.distinctEvents} distinct events, ${observer.duplicates} duplicates; by type: $arrived")
             assertTrue(complete, "only ${observer.distinctEvents} of ${report.expectedEvents} events arrived")
             report.expectedByType.forEach { (type, count) ->
                 assertEquals(count, arrived[type] ?: 0, "distinct $type events")
             }
-            if (exactlyOnceWhenHealthy) assertEquals(0, observer.duplicates, "duplicates on a healthy broker")
+            if (variant.exactlyOnceWhenHealthy) assertEquals(0, observer.duplicates, "duplicates on a healthy broker")
             assertTrue(observer.awaitCondition(30_000) { observer.backlog() == 0L }, "the broker should be fully drained")
         }
     }
 
     /**
-     * A broker that hangs for minutes under steady traffic: the case that decides between the
-     * setups in production. Every setup must recover afterwards; only one that promises to survive
-     * a hang must also keep logins fast and deliver everything. The numbers are printed either way.
+     * The whole broker hanging for minutes under steady traffic: the case that decides between the
+     * setups in production.
      */
     @Test
     @Order(5)
-    fun `a long broker outage under steady traffic`() {
-        val name = javaClass.simpleName
-        Observer(stack).use { observer ->
-            val leadInMs = 10_000L
-            val outageMs = ItSettings.outageSeconds * 1_000
-            val tailMs = 20_000L
-
-            val traffic = Traffic(api, realm, users)
-            var report: Traffic.Report? = null
-            val driver = Thread {
-                report = traffic.runFor(leadInMs + outageMs + tailMs, concurrency = 8, perSecond = ItSettings.outageRate)
-            }
-            driver.start()
-
-            Thread.sleep(leadInMs)
-            val pausedAt = System.currentTimeMillis()
-            stack.pauseBroker()
-            try {
-                Thread.sleep(outageMs)
-            } finally {
-                stack.unpauseBroker()
-            }
-            val resumedAt = System.currentTimeMillis()
-            driver.join()
-            val sent = assertNotNull(report)
-
-            println("[$name] long outage, ${ItSettings.outageSeconds}s at ${ItSettings.outageRate} requests/s: $sent")
-            println("[$name]   requests started before the outage: ${sent.window(0, pausedAt)}")
-            println("[$name]   requests started during the outage: ${sent.window(pausedAt, resumedAt)}")
-            println("[$name]   requests started after the outage:  ${sent.window(resumedAt, Long.MAX_VALUE)}")
-
-            // Whatever the setup promises, Keycloak and the plugin must come back on their own.
-            assertTrue(api.passwordLogin(realm, "user199").ok, "Keycloak should answer again after the outage")
-            val recovered = observer.awaitCondition(180_000) { observer.messages.any { it.username == "user199" } }
-            observer.awaitCondition(60_000) { observer.distinctEvents >= sent.expectedEvents + 1 }
-            println(
-                "[$name]   arrived: ${observer.distinctEvents} of ${sent.expectedEvents + 1} events " +
-                    "(${observer.duplicates} duplicates); recovered: $recovered"
-            )
-            assertTrue(recovered, "events should flow again after the outage")
-
-            if (survivesBrokerHang) {
-                assertEquals(0, sent.failedRequests, "no request may fail while the broker hangs")
-                val duringP99 = sent.samples.filter { it.startedAtMs in pausedAt until resumedAt }
-                    .map { it.latencyMs }.sorted().let { it[((it.size - 1) * 0.99).toInt()] }
-                assertTrue(duringP99 < 2_000, "p99 during the outage was ${duringP99}ms")
-                assertTrue(observer.distinctEvents >= sent.expectedEvents + 1, "every event should arrive after the outage")
-            }
+    fun `a long broker outage under steady traffic`() = underSteadyTraffic("long outage, ${ItSettings.outageSeconds}s") {
+        stack.pauseBroker()
+        try {
+            Thread.sleep(ItSettings.outageSeconds * 1_000)
+        } finally {
+            stack.unpauseBroker()
         }
     }
 
     @Test
-    @Order(6)
+    @Order(100)
     fun `a graceful shutdown closes the transport and loses nothing`() {
         Observer(stack).use { observer ->
             val burst = Traffic(api, realm, users).run(2_000, ItSettings.concurrency)
@@ -199,63 +185,116 @@ abstract class AmqpScenarios(private val settings: Map<String, String>) {
             assertTrue("Closed [webhook-amqp] transport" in logs, "Keycloak never closed the plugin's transport")
             assertTrue(observer.awaitDistinct(burst.expectedEvents, 60_000),
                 "only ${observer.distinctEvents} of ${burst.expectedEvents} events arrived")
-            onShutdownLogs(logs)
+            if (variant == Variant.ASYNC_CONFIRMS) {
+                // The summary counts drops over the whole run; what matters here is that the drain left nothing behind.
+                assertNotNull(logs.lines().lastOrNull { "AMQP publisher stopped:" in it }, "the async publisher never logged its shutdown")
+                val leftBehind = logs.lines().firstOrNull { "undelivered messages" in it }
+                assertTrue(leftBehind == null, "shutdown left messages behind: $leftBehind")
+            }
         }
     }
 
-    /** Setup-specific checks on what Keycloak logged while stopping. */
-    protected open fun onShutdownLogs(logs: String) {}
-}
+    /**
+     * Runs [disruption] while clients send a fixed [ItSettings.outageRate] requests a second (the same
+     * load for every setup), then prints latency and failures before, during and after it, and what
+     * arrived. Every setup must recover on its own afterwards; one that promises at-least-once
+     * must also keep requests fast and deliver everything.
+     */
+    protected fun underSteadyTraffic(label: String, disruption: () -> Unit) {
+        Observer(stack).use { observer ->
+            val done = AtomicBoolean(false)
+            var report: Traffic.Report? = null
+            val driver = Thread {
+                report = Traffic(api, realm, users).runWhile(concurrency = 8, perSecond = ItSettings.outageRate) { !done.get() }
+            }
+            driver.start()
 
-/**
- * Upstream's default today: sync publishing without confirms. A message counts as sent once it's
- * written to the socket, so nothing is promised for events sent while the broker hangs.
- */
-class SyncDefaultsTest : AmqpScenarios(emptyMap()) {
-    override val survivesBrokerHang = false
-    override val exactlyOnceWhenHealthy = true
-}
+            val from: Long
+            val to: Long
+            try {
+                Thread.sleep(10_000)
+                from = System.currentTimeMillis()
+                disruption()
+                to = System.currentTimeMillis()
+                Thread.sleep(20_000)
+            } finally {
+                // Also when the disruption fails: the traffic must never leak into the next scenario.
+                done.set(true)
+                driver.join()
+            }
+            val sent = assertNotNull(report)
 
-/** Sync publishing on the request thread, waiting for each confirm: the conservative production setup. */
-class SyncWithConfirmsTest : AmqpScenarios(
-    mapOf("WEBHOOK_AMQP_ENABLE_PUBLISHER_CONFIRM" to "true")
-) {
-    override val survivesBrokerHang = false
-    override val exactlyOnceWhenHealthy = true
-}
+            println("[$name] $label (${(to - from) / 1000}s) at ${ItSettings.outageRate} requests/s: $sent")
+            println("[$name]   requests started before: ${sent.window(0, from)}")
+            println("[$name]   requests started during: ${sent.window(from, to)}")
+            println("[$name]   requests started after:  ${sent.window(to, Long.MAX_VALUE)}")
 
-/**
- * Async publishing without confirms: logins never wait, but a message counts as sent once it's
- * written to the connection, so nothing is resent. Here to show what confirms add, not as a
- * recommended setup.
- */
-class AsyncWithoutConfirmsTest : AmqpScenarios(
-    mapOf(
-        "WEBHOOK_AMQP_PUBLISH_MODE" to "async",
-        "WEBHOOK_AMQP_MESSAGE_ID" to "true",
-        "WEBHOOK_AMQP_BUFFER_CAPACITY" to "10000",
-    )
-) {
-    override val survivesBrokerHang = false
-    override val exactlyOnceWhenHealthy = true
-}
+            // Whatever the setup promises, Keycloak and the plugin must come back on their own.
+            assertTrue(api.passwordLogin(realm, "user199").ok, "Keycloak should answer again afterwards")
+            val recovered = observer.awaitCondition(180_000) { observer.messages.any { it.username == "user199" } }
+            observer.awaitCondition(60_000) { observer.distinctEvents >= sent.expectedEvents + 1 }
+            println(
+                "[$name]   arrived: ${observer.distinctEvents} of ${sent.expectedEvents + 1} events " +
+                    "(${observer.duplicates} duplicates); recovered: $recovered"
+            )
+            assertTrue(recovered, "events should flow again afterwards")
 
-/** Async publishing with confirms: at least once, with ids to drop duplicates, and a buffer for bursts. */
-class AsyncAtLeastOnceTest : AmqpScenarios(
-    mapOf(
-        "WEBHOOK_AMQP_PUBLISH_MODE" to "async",
-        "WEBHOOK_AMQP_ENABLE_PUBLISHER_CONFIRM" to "true",
-        "WEBHOOK_AMQP_MESSAGE_ID" to "true",
-        "WEBHOOK_AMQP_BUFFER_CAPACITY" to "10000",
-    )
-) {
-    override val survivesBrokerHang = true
-    override val exactlyOnceWhenHealthy = false
-
-    /** The summary counts drops over the whole run; what matters here is that the drain left nothing behind. */
-    override fun onShutdownLogs(logs: String) {
-        assertNotNull(logs.lines().lastOrNull { "AMQP publisher stopped:" in it }, "the async publisher never logged its shutdown")
-        val leftBehind = logs.lines().firstOrNull { "undelivered messages" in it }
-        assertTrue(leftBehind == null, "shutdown left messages behind: $leftBehind")
+            if (variant.atLeastOnce) {
+                assertEquals(0, sent.failedRequests, "no request may fail during the disruption")
+                val during = sent.samples.filter { it.startedAtMs in from until to }.map { it.latencyMs }.sorted()
+                val p99 = if (during.isEmpty()) 0 else during[((during.size - 1) * 0.99).toInt()]
+                assertTrue(p99 < 2_000, "p99 during the disruption was ${p99}ms")
+                assertTrue(observer.distinctEvents >= sent.expectedEvents + 1, "every event should arrive")
+            }
+        }
     }
 }
+
+/**
+ * Failures only a cluster can have, on top of every single-broker scenario. Quorum queues keep
+ * accepting messages as long as a majority of nodes is up; the plugin has to find a live node.
+ */
+abstract class ClusterScenarios(variant: Variant) : AmqpScenarios(variant, Topology.CLUSTER) {
+
+    @Test
+    @Order(10)
+    fun `the node the plugin is connected to crashes`() = underSteadyTraffic("node crash") {
+        val node = stack.pluginNode()
+        stack.kill(node)
+        Thread.sleep(30_000)
+        stack.restart(node)
+    }
+
+    @Test
+    @Order(11)
+    fun `a rolling restart of every node`() = underSteadyTraffic("rolling restart") {
+        stack.rabbits.forEach { node ->
+            stack.stop(node)
+            stack.restart(node)
+        }
+    }
+
+    @Test
+    @Order(12)
+    fun `the cluster loses its majority for a while`() = underSteadyTraffic("majority lost") {
+        // With pause_minority the one node left stops serving too, so this is a full outage
+        // that the cluster has to heal from by itself.
+        val (first, second) = stack.rabbits.take(2)
+        stack.stop(first)
+        stack.stop(second)
+        Thread.sleep(60_000)
+        stack.restart(first, second)
+    }
+}
+
+// ---- single broker ----
+class SyncDefaultsTest : AmqpScenarios(Variant.SYNC)
+class SyncWithConfirmsTest : AmqpScenarios(Variant.SYNC_CONFIRMS)
+class AsyncWithoutConfirmsTest : AmqpScenarios(Variant.ASYNC)
+class AsyncAtLeastOnceTest : AmqpScenarios(Variant.ASYNC_CONFIRMS)
+
+// ---- three-node quorum cluster ----
+class SyncDefaultsClusterTest : ClusterScenarios(Variant.SYNC)
+class SyncWithConfirmsClusterTest : ClusterScenarios(Variant.SYNC_CONFIRMS)
+class AsyncWithoutConfirmsClusterTest : ClusterScenarios(Variant.ASYNC)
+class AsyncAtLeastOnceClusterTest : ClusterScenarios(Variant.ASYNC_CONFIRMS)

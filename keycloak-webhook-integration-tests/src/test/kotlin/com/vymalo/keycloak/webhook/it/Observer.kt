@@ -4,6 +4,7 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.rabbitmq.client.Connection
 import com.rabbitmq.client.DeliverCallback
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
@@ -21,13 +22,21 @@ class Observer(stack: Stack, bindingKey: String = "#") : AutoCloseable {
         val username: String? get() = payload.getAsJsonObject("details")?.get("username")?.asString
     }
 
-    private val connection: Connection = stack.brokerConnectionFactory().newConnection("it-observer")
+    private val connection: Connection =
+        stack.brokerConnectionFactory().newConnection(stack.brokerAddresses(), "it-observer")
     private val channel = connection.createChannel()
     private val all = ConcurrentLinkedQueue<Received>()
     private val copies = ConcurrentHashMap<String, AtomicInteger>()
+    private val cluster = stack.topology == Topology.CLUSTER
 
-    /** Exclusive and auto-deleted: consumed as messages arrive, and gone with the connection. */
-    private val queue: String = channel.queueDeclare().queue
+    /**
+     * On one node: exclusive and auto-deleted, consumed as messages arrive and gone with the
+     * connection. On a cluster: a durable quorum queue, replicated to every node like a production
+     * consumer's, so it outlives a node and the observer's own reconnect; deleted in [close].
+     */
+    private val queue: String =
+        if (cluster) channel.queueDeclare("it-observer-${UUID.randomUUID()}", true, false, false, mapOf("x-queue-type" to "quorum")).queue
+        else channel.queueDeclare().queue
 
     init {
         channel.queueBind(queue, Stack.EXCHANGE, bindingKey)
@@ -66,5 +75,9 @@ class Observer(stack: Stack, bindingKey: String = "#") : AutoCloseable {
     /** Messages still sitting in the queue; 0 once the consumer has taken everything the broker holds. */
     fun backlog(): Long = connection.createChannel().use { it.messageCount(queue) }
 
-    override fun close() = connection.close()
+    /** Tolerant on purpose: on a cluster the connection may be in the middle of recovering from a node restart. */
+    override fun close() {
+        if (cluster) runCatching { connection.createChannel().use { it.queueDelete(queue) } }
+        connection.abort()
+    }
 }

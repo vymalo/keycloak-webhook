@@ -56,8 +56,13 @@ class Traffic(private val api: KeycloakApi, private val realm: String, private v
      */
     fun runFor(durationMs: Long, concurrency: Int, perSecond: Int): Report {
         val until = System.currentTimeMillis() + durationMs
+        return runWhile(concurrency, perSecond) { System.currentTimeMillis() < until }
+    }
+
+    /** Like [runFor], but for as long as [keepGoing] says, e.g. until a disruption is over. */
+    fun runWhile(concurrency: Int, perSecond: Int, keepGoing: () -> Boolean): Report {
         pacing = Pacing(1_000_000_000L / perSecond)
-        return drive(concurrency) { System.currentTimeMillis() < until }
+        return drive(concurrency, keepGoing)
     }
 
     /** Hands out one start time per request, a fixed interval apart. */

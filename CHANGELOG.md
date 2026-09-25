@@ -15,6 +15,8 @@
   reconnect
 - A connection dropped by the broker could come back through automatic recovery as a second, leaked connection
 - `WEBHOOK_AMQP_VHOST` is optional as documented, defaulting to `/` (leaving it out used to fail)
+- Syslog messages carried the Syslog server's hostname in their HOSTNAME field; they now carry
+  `WEBHOOK_SYSLOG_HOSTNAME`, as documented. **This changes the HOSTNAME of every Syslog message.**
 
 ### Changed
 

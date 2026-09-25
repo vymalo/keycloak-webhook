@@ -45,12 +45,12 @@ class SyslogWebhookTest {
         )
 
     /**
-     * `<14>` is facility USER (1) * 8 + severity INFORMATIONAL (6). The hostname field
-     * carries the *server* address rather than WEBHOOK_SYSLOG_HOSTNAME: that is what
-     * upstream does today, so it is pinned here until it is fixed deliberately.
+     * `<14>` is facility USER (1) * 8 + severity INFORMATIONAL (6); the hostname field carries
+     * WEBHOOK_SYSLOG_HOSTNAME. (It used to carry the syslog server's address, which this pinned
+     * until the fix.)
      */
     private fun rfc5424(json: String) =
-        Regex("""^<14>1 \S+ ${Regex.escape(loopback.hostAddress)} keycloak_events - - - ${Regex.escape(json)}$""")
+        Regex("""^<14>1 \S+ keycloak keycloak_events - - - ${Regex.escape(json)}$""")
 
     @Test
     fun `UDP sends one RFC 5424 datagram per event`() {

@@ -8,7 +8,7 @@ import com.vymalo.keycloak.webhook.helper.*
 /** Everything the Syslog transport needs, parsed and validated up front. */
 data class SyslogConfig(
     val protocol: Protocol,
-    /** Required but not used yet: messages carry [serverHostname] instead (a known upstream quirk). */
+    /** This Keycloak's name, sent in every message's HOSTNAME field so the syslog server can tell senders apart. */
     val hostname: String,
     val appName: String,
     val facility: Facility,

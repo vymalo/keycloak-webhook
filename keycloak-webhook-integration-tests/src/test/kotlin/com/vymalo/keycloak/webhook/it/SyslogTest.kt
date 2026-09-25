@@ -73,13 +73,11 @@ abstract class SyslogScenarios(private val protocol: String) {
     }
 
     /**
-     * Known upstream bug, kept here so it stays visible: the HOSTNAME field should name the Keycloak
-     * that sent the message (WEBHOOK_SYSLOG_HOSTNAME, as the README says), but carries the syslog
-     * server's own name. Remove @Disabled with the fix.
+     * Regression guard for an upstream bug: the HOSTNAME field carried the syslog server's own name
+     * instead of WEBHOOK_SYSLOG_HOSTNAME, so the server couldn't tell which Keycloak sent what.
      */
     @Test
     @Order(2)
-    @Disabled("Known bug: HOSTNAME carries WEBHOOK_SYSLOG_SERVER_HOSTNAME instead of WEBHOOK_SYSLOG_HOSTNAME; fixed later in this PR")
     fun `the HOSTNAME field names the Keycloak that sent the message`() {
         assertTrue(api.passwordLogin(realm, "user2").ok)
         await("a login at syslog-ng") { SyslogServer.rawMessages(syslog).any { "\"username\":\"user2\"" in it } }

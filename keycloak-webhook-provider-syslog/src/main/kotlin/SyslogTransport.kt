@@ -19,9 +19,8 @@ class SyslogTransport(config: SyslogConfig) : Transport {
         Protocol.TCP -> TcpSyslogMessageSender()
         Protocol.UDP -> UdpSyslogMessageSender()
     }.apply {
-        // Upstream sets the HOSTNAME field from the server address, not WEBHOOK_SYSLOG_HOSTNAME.
-        // Kept as-is: changing it changes every message, so it will be a deliberate, documented fix.
-        defaultMessageHostname = config.serverHostname
+        // The HOSTNAME field names the machine that sent the message: this Keycloak, not the syslog server.
+        defaultMessageHostname = config.hostname
         defaultAppName = config.appName
         defaultFacility = config.facility
         defaultSeverity = config.severity

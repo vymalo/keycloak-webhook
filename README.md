@@ -308,8 +308,8 @@ Messages are published with the routing key `KC_CLIENT.<realmId>.<clientId>.<use
   `"TCP"` or `"UDP"` protocol for Syslog communication.
 
 - **`WEBHOOK_SYSLOG_HOSTNAME`**  
-  Hostname of the Keycloak instance. Required, but currently not used: messages carry the Syslog server hostname in
-  their HOSTNAME field instead.
+  Hostname of the Keycloak instance, sent in every message's HOSTNAME field so the Syslog server can tell senders
+  apart.
 
 - **`WEBHOOK_SYSLOG_APP_NAME`**  
   Application name for Syslog messages.

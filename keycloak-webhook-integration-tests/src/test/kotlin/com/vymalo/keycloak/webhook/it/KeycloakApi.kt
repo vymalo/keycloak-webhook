@@ -109,11 +109,11 @@ class KeycloakApi(private val baseUrl: String) {
          * so logins cost what a real login costs minus the deliberate slowness; events aren't
          * stored in Keycloak's own database, which the plugin doesn't need and a load run would bloat.
          */
-        fun testRealm(name: String, users: Int) = mapOf(
+        fun testRealm(name: String, users: Int, listeners: List<String> = listOf("webhook-amqp")) = mapOf(
             "realm" to name,
             "enabled" to true,
             "eventsEnabled" to false,
-            "eventsListeners" to listOf("webhook-amqp"),
+            "eventsListeners" to listeners,
             "adminEventsEnabled" to true,
             "adminEventsDetailsEnabled" to true,
             "passwordPolicy" to "hashIterations(1)",

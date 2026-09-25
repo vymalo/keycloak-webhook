@@ -12,6 +12,9 @@ object ItSettings {
         ?.onEach { check(it.isFile) { "Plugin jar missing: $it. Run through ./gradlew integrationTest." } }
         ?: error("it.pluginJars is not set. Run through ./gradlew integrationTest.")
 
+    /** The plugin's OpenAPI spec, for the mock that validates the HTTP provider's requests. */
+    val openapiSpec: String = System.getProperty("it.openapiSpec") ?: error("it.openapiSpec is not set. Run through ./gradlew integrationTest.")
+
     /** The version the heavy scenarios run on: the one we run in production. */
     val keycloakVersion: String = System.getProperty("it.keycloakVersion") ?: "26.2.3"
 

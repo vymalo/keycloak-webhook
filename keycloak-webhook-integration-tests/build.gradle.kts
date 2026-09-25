@@ -17,6 +17,8 @@ dependencies {
     testImplementation("org.testcontainers", "testcontainers", "2.0.5")
     testImplementation("com.rabbitmq", "amqp-client", "5.25.0")
     testImplementation("com.google.code.gson", "gson", "2.12.1")
+    // In-JVM HTTP receiver for the HTTP provider's scenarios; on the 4.x line like the plugin's own client.
+    testImplementation("com.squareup.okhttp3", "mockwebserver", "4.12.0")
     // Gives Testcontainers somewhere to log, so a Keycloak that fails to start explains why.
     testRuntimeOnly("org.slf4j", "slf4j-simple", "2.0.17")
 }
@@ -25,11 +27,11 @@ kotlin {
     jvmToolchain(17)
 }
 
-// The jars under test are the shaded ones we'd deploy, not this build's classes.
-evaluationDependsOn(":keycloak-webhook-provider-core")
-evaluationDependsOn(":keycloak-webhook-provider-amqp")
-val pluginJars = listOf(":keycloak-webhook-provider-core", ":keycloak-webhook-provider-amqp")
-    .map { project(it).tasks.named<Jar>("shadowJar") }
+// The jars under test are the shaded ones we'd deploy, not this build's classes: all four, as the README
+// tells people to install them, even when a scenario only configures one provider.
+val pluginProjects = listOf("core", "amqp", "http", "syslog").map { ":keycloak-webhook-provider-$it" }
+pluginProjects.forEach { evaluationDependsOn(it) }
+val pluginJars = pluginProjects.map { project(it).tasks.named<Jar>("shadowJar") }
 
 tasks.test {
     // Declared even though disabled: the Kotlin plugin picks kotlin-test's JUnit 5 flavour from it.
@@ -53,6 +55,8 @@ tasks.register<Test>("integrationTest") {
     doFirst {
         systemProperty("it.pluginJars", pluginJars.joinToString(File.pathSeparator) { it.get().archiveFile.get().asFile.path })
     }
+    // The spec the HTTP provider's client is generated from; Prism validates requests against it.
+    systemProperty("it.openapiSpec", rootProject.file("openapi/webhook.open-api.yml").path)
     // -PkeycloakVersion=26.2.3 -PkeycloakVersions=21.1.2,26.2.3 -Pevents=50000 -Pconcurrency=32
     // -PoutageSeconds=120 -PoutageRate=25
     listOf("keycloakVersion", "keycloakVersions", "events", "concurrency", "outageSeconds", "outageRate").forEach { key ->

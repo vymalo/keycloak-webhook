@@ -202,32 +202,11 @@ abstract class AmqpScenarios(private val variant: Variant, private val topology:
      */
     protected fun underSteadyTraffic(label: String, disruption: () -> Unit) {
         Observer(stack).use { observer ->
-            val done = AtomicBoolean(false)
-            var report: Traffic.Report? = null
-            val driver = Thread {
-                report = Traffic(api, realm, users).runWhile(concurrency = 8, perSecond = ItSettings.outageRate) { !done.get() }
-            }
-            driver.start()
-
-            val from: Long
-            val to: Long
-            try {
-                Thread.sleep(10_000)
-                from = System.currentTimeMillis()
-                disruption()
-                to = System.currentTimeMillis()
-                Thread.sleep(20_000)
-            } finally {
-                // Also when the disruption fails: the traffic must never leak into the next scenario.
-                done.set(true)
-                driver.join()
-            }
-            val sent = assertNotNull(report)
-
-            println("[$name] $label (${(to - from) / 1000}s) at ${ItSettings.outageRate} requests/s: $sent")
-            println("[$name]   requests started before: ${sent.window(0, from)}")
-            println("[$name]   requests started during: ${sent.window(from, to)}")
-            println("[$name]   requests started after:  ${sent.window(to, Long.MAX_VALUE)}")
+            val run = Traffic(api, realm, users).around(disruption)
+            val sent = run.report
+            val from = run.fromMs
+            val to = run.toMs
+            run.print(name, "$label at ${ItSettings.outageRate} requests/s")
 
             // Whatever the setup promises, Keycloak and the plugin must come back on their own.
             assertTrue(api.passwordLogin(realm, "user199").ok, "Keycloak should answer again afterwards")

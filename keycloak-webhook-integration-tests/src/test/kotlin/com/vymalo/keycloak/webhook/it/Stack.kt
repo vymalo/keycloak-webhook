@@ -15,6 +15,9 @@ import java.time.Duration
 
 /** How RabbitMQ runs next to Keycloak. */
 enum class Topology {
+    /** No RabbitMQ at all: for scenarios about the HTTP and Syslog providers. */
+    NONE,
+
     /** One broker, as in the simplest deployments and in the README's examples. */
     SINGLE,
 
@@ -28,14 +31,19 @@ enum class Topology {
 }
 
 /**
- * RabbitMQ (one node or a cluster) and one Keycloak with the plugin installed, on a private
- * Docker network, set up the way production runs them: shaded jars in /opt/keycloak/providers
- * and the plugin configured through WEBHOOK_* environment variables.
+ * One Keycloak with the plugin installed, next to what it sends to, on a private Docker network,
+ * set up the way production runs them: all four shaded jars in /opt/keycloak/providers and the
+ * plugin configured through WEBHOOK_* environment variables.
+ *
+ * The receivers are RabbitMQ (none, one node or a cluster, see [topology]) and any [sidecars]:
+ * other containers a scenario needs on the same network, such as an OpenAPI mock or a syslog
+ * server. Receivers that live in the test JVM reach Keycloak through Testcontainers' host access.
  */
 class Stack(
     val keycloakVersion: String,
     pluginSettings: Map<String, String>,
     val topology: Topology = Topology.SINGLE,
+    sidecars: (Network) -> List<Container> = { emptyList() },
 ) : AutoCloseable {
 
     class Container(image: String) : GenericContainer<Container>(DockerImageName.parse(image))
@@ -75,7 +83,11 @@ class Stack(
     private val network: Network = Network.newNetwork()
 
     /** Each node's name on the network, in the same order as [rabbits]. */
-    private val nodeNames = if (topology == Topology.SINGLE) listOf("rabbitmq") else clusterNodes
+    private val nodeNames = when (topology) {
+        Topology.NONE -> emptyList()
+        Topology.SINGLE -> listOf("rabbitmq")
+        Topology.CLUSTER -> clusterNodes
+    }
 
     /**
      * One fixed host port per node, kept across restarts. With Docker's usual random ports a node
@@ -84,8 +96,9 @@ class Stack(
      */
     private val hostPorts = nodeNames.map { ServerSocket(0).use { socket -> socket.localPort } }
 
-    /** The broker nodes: one for [Topology.SINGLE], three for [Topology.CLUSTER]. */
+    /** The broker nodes: none, one for [Topology.SINGLE], three for [Topology.CLUSTER]. */
     val rabbits: List<Container> = when (topology) {
+        Topology.NONE -> emptyList()
         Topology.SINGLE -> listOf(rabbitNode("rabbitmq", hostPorts[0]))
         Topology.CLUSTER -> clusterNodes.mapIndexed { i, name ->
             rabbitNode(name, hostPorts[i])
@@ -105,6 +118,8 @@ class Stack(
         .apply { portBindings = listOf("$hostPort:$AMQP_PORT") }
         .waitingFor(Wait.forLogMessage(".*Server startup complete.*\\n", 1).withStartupTimeout(Duration.ofMinutes(3)))
 
+    private val sidecarContainers: List<Container> = sidecars(network)
+
     val keycloak: Container = Container("quay.io/keycloak/keycloak:$keycloakVersion")
         .withNetwork(network)
         .withExposedPorts(8080)
@@ -122,11 +137,17 @@ class Stack(
         }
         .waitingFor(Wait.forHttp("/realms/master").forPort(8080).withStartupTimeout(Duration.ofMinutes(5)))
 
-    /** Starts the broker (a cluster's nodes together, so they find each other), creates the exchange, then Keycloak. */
+    /**
+     * Starts the broker (a cluster's nodes together, so they find each other) and creates the
+     * exchange, then the sidecars, then Keycloak, so everything it sends to is up first.
+     */
     fun start(): Stack {
-        Startables.deepStart(rabbits).join()
-        awaitClusterHealthy()
-        brokerChannel { it.exchangeDeclare(EXCHANGE, "topic", true) }
+        if (rabbits.isNotEmpty()) {
+            Startables.deepStart(rabbits).join()
+            awaitClusterHealthy()
+            brokerChannel { it.exchangeDeclare(EXCHANGE, "topic", true) }
+        }
+        Startables.deepStart(sidecarContainers).join()
         keycloak.start()
         return this
     }
@@ -222,7 +243,7 @@ class Stack(
         while (System.currentTimeMillis() < deadline) {
             val healthy = runCatching {
                 rabbits.all { it.isRunning() } &&
-                    (topology == Topology.SINGLE ||
+                    (topology != Topology.CLUSTER ||
                         rabbits.all { node ->
                             val status = node.execInContainer("rabbitmqctl", "cluster_status", "--formatter", "json").stdout
                             clusterNodes.all { "rabbit@$it" in status.substringAfter("\"running_nodes\"").substringBefore("]") }
@@ -245,6 +266,7 @@ class Stack(
 
     override fun close() {
         runCatching { keycloak.stop() }
+        sidecarContainers.forEach { runCatching { it.stop() } }
         rabbits.forEach { runCatching { it.stop() } }
         runCatching { network.close() }
     }

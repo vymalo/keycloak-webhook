@@ -83,6 +83,52 @@ class Traffic(private val api: KeycloakApi, private val realm: String, private v
     @Volatile
     private var pacing: Pacing? = null
 
+    /** A paced run around a disruption: what was sent, and when the disruption started and ended. */
+    class Disrupted(val report: Report, val fromMs: Long, val toMs: Long) {
+        /** Latency percentile of the requests that started while the disruption lasted. */
+        fun percentileDuring(p: Double): Long =
+            report.samples.filter { it.startedAtMs in fromMs until toMs }.latencyPercentile(p)
+
+        /** Prints the run and its three phases, labelled with [who] (the scenario) and [what] (the disruption). */
+        fun print(who: String, what: String) {
+            println("[$who] $what (${(toMs - fromMs) / 1000}s): ${report}")
+            println("[$who]   requests started before: ${report.window(0, fromMs)}")
+            println("[$who]   requests started during: ${report.window(fromMs, toMs)}")
+            println("[$who]   requests started after:  ${report.window(toMs, Long.MAX_VALUE)}")
+        }
+    }
+
+    /**
+     * Sends [perSecond] requests a second from [concurrency] clients: [leadInMs] of normal traffic, then
+     * during [disruption], then [tailMs] more. The clients stop even if the disruption fails, so
+     * traffic can never leak into the next scenario.
+     */
+    fun around(
+        disruption: () -> Unit,
+        perSecond: Int = ItSettings.outageRate,
+        concurrency: Int = 8,
+        leadInMs: Long = 10_000,
+        tailMs: Long = 20_000,
+    ): Disrupted {
+        val done = java.util.concurrent.atomic.AtomicBoolean(false)
+        var report: Report? = null
+        val driver = Thread { report = runWhile(concurrency, perSecond) { !done.get() } }
+        driver.start()
+        val from: Long
+        val to: Long
+        try {
+            Thread.sleep(leadInMs)
+            from = System.currentTimeMillis()
+            disruption()
+            to = System.currentTimeMillis()
+            Thread.sleep(tailMs)
+        } finally {
+            done.set(true)
+            driver.join()
+        }
+        return Disrupted(checkNotNull(report), from, to)
+    }
+
     /** Logs in [count] different users at once, and nothing else. */
     fun logins(count: Int, usernames: (Int) -> String): Report {
         val started = System.nanoTime()

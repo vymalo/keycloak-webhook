@@ -111,7 +111,7 @@ abstract class AmqpScenarios(private val variant: Variant, private val topology:
     fun `one broker connection serves every session`() {
         val report = Traffic(api, realm, users).logins(50) { "user${it + 1}" }
         assertEquals(0, report.failedRequests)
-        assertEquals(1, stack.pluginConnections(), "plugin connections after 50 logins")
+        assertEquals(1, stack.awaitPluginConnections(1), "plugin connections after 50 logins; ${stack.describeConnections()}")
     }
 
     @Test

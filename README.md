@@ -470,10 +470,12 @@ We welcome contributions! To get started:
   `build` or CI; start them on demand (Docker required, expect several minutes):
   ```bash
   ./gradlew integrationTest                                    # everything below
-  ./gradlew integrationTest --tests '*DefaultsSmokeTest*'      # default settings on every supported Keycloak version
+  ./gradlew integrationTest --tests '*DefaultsSmokeTest*'      # all three providers, default settings, every supported Keycloak version
   ./gradlew integrationTest --tests '*SyncWithConfirmsTest*'   # production scenarios, sync publishing with confirms
   ./gradlew integrationTest --tests '*AsyncAtLeastOnceTest*'   # the same scenarios, async publishing
   ./gradlew integrationTest --tests '*ClusterTest'             # every setup against a three-node quorum cluster
+  ./gradlew integrationTest --tests '*HttpTest'                # HTTP: Prism validating against the OpenAPI spec, plus a recorder
+  ./gradlew integrationTest --tests '*Syslog*Test'             # Syslog over UDP and TCP, against syslog-ng
   ```
   The production scenarios cover real logins, failed logins and admin events, one broker connection for all
   sessions, logins while the broker hangs, an organic load (login, refresh, userinfo, introspection, logout, service

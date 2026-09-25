@@ -46,7 +46,7 @@ class Stack(
     sidecars: (Network) -> List<Container> = { emptyList() },
 ) : AutoCloseable {
 
-    class Container(image: String) : GenericContainer<Container>(DockerImageName.parse(image))
+    open class Container(image: String) : GenericContainer<Container>(DockerImageName.parse(image))
 
     companion object {
         const val EXCHANGE = "keycloak"
@@ -128,6 +128,10 @@ class Stack(
         .withEnv("KEYCLOAK_ADMIN_PASSWORD", "admin")
         .withEnv("KC_BOOTSTRAP_ADMIN_USERNAME", "admin")
         .withEnv("KC_BOOTSTRAP_ADMIN_PASSWORD", "admin")
+        // By default Keycloak sizes its heap as a share of the memory Docker offers, which on a desktop can
+        // be gigabytes; a fixed 1 GB is plenty for these tests and keeps a whole run laptop-friendly.
+        // Versions without JAVA_OPTS_KC_HEAP (before 24) just ignore it.
+        .withEnv("JAVA_OPTS_KC_HEAP", "-Xms256m -Xmx1g")
         .withEnv(baseSettings + (if (topology == Topology.CLUSTER) clusterSettings else emptyMap()) + pluginSettings)
         .withCommand("start-dev")
         .apply {
@@ -190,8 +194,24 @@ class Stack(
         result.stdout.lines().filter { it.isNotBlank() }.map { line -> line.split('\t').map(String::trim) }
     }.distinctBy { it.first() }
 
+    /** For failure messages: every connection the broker has, and the address Keycloak's connections come from. */
+    fun describeConnections(): String = "keycloak at ${keycloakIp()}, broker connections (name, peer, node): ${connections()}"
+
     /** Broker connections opened from Keycloak's container, i.e. the plugin's; the test's own come from the host. */
     fun pluginConnections(): Int = connections().count { it.getOrNull(1) == keycloakIp() }
+
+    /**
+     * The plugin's connection count once it settles on [expected], or whatever it is after [timeoutMs].
+     * rabbitmqctl can list a connection a moment after it's opened, so a single look can come up short.
+     */
+    fun awaitPluginConnections(expected: Int, timeoutMs: Long = 15_000): Int {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (true) {
+            val count = pluginConnections()
+            if (count == expected || System.currentTimeMillis() > deadline) return count
+            Thread.sleep(500)
+        }
+    }
 
     /** The node the plugin is connected to, waiting a little in case it is between connections. */
     fun pluginNode(timeoutMs: Long = 30_000): Container {

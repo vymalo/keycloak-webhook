@@ -399,8 +399,9 @@ Keycloak, so it cannot fail a login or an admin action:
   each request took 32 s (three 10 s client timeouts plus the pauses), and Keycloak served 7 requests in 30 s instead
   of about 750.
 - **Syslog:** the sender sends on the request thread.
-  - UDP is fire-and-forget: while the server was down or hung for 30 s, logins stayed fast but those events were lost.
-    While the server's host name couldn't be resolved, requests took up to 8 s.
+  - UDP is fire-and-forget. While the server hung for 30 s, logins stayed fast but those events were lost. While it
+    was down, so its host name no longer resolved, the sender kept looking the name up again: requests took up to
+    8 s, and those events were lost too.
   - TCP reconnects on its own. A server that hung for 30 s held requests for up to 17 s; they were delivered
     afterwards. A server that was down cost up to 15 s per request, and those events were lost.
 

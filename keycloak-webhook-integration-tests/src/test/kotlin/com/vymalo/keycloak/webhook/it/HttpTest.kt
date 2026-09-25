@@ -115,9 +115,9 @@ class HttpTest {
 
     @Test
     @Order(4)
-    fun `a receiver that is gone adds the retry pauses to every login`() =
-        disrupted("second URL drops every connection for 30s") {
-            recorder.mode = HttpRecorder.Mode.DROP
+    fun `a failing receiver adds the retry pauses to every login`() =
+        disrupted("second URL answers 500 for 30s") {
+            recorder.mode = HttpRecorder.Mode.FAIL
             Thread.sleep(30_000)
             recorder.mode = HttpRecorder.Mode.OK
         }
@@ -145,8 +145,15 @@ class HttpTest {
     private fun await(what: String, timeoutMs: Long = 60_000, condition: () -> Boolean) {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (!condition()) {
-            check(System.currentTimeMillis() < deadline) { "timed out waiting for: $what" }
+            check(System.currentTimeMillis() < deadline) { "timed out waiting for: $what\n${diagnostics()}" }
             Thread.sleep(200)
         }
+    }
+
+    /** The recorder's state and what the plugin last logged, for a failure message that explains itself. */
+    private fun diagnostics(): String {
+        val pluginLog = stack.keycloak.logs.lines().filter { "webhook" in it.lowercase() || "Exception" in it }.takeLast(15)
+        return "recorder mode ${recorder.mode}, ${recorder.requests.size} requests since the last clear; " +
+            "the plugin last logged:\n" + pluginLog.joinToString("\n")
     }
 }

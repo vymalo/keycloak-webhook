@@ -25,14 +25,15 @@ class HttpRecorder : AutoCloseable {
         /** Answers 200 at once. */
         OK,
 
-        /** Answers 500, which the plugin retries. */
+        /** Answers 500, which the plugin retries like any other failure. */
         FAIL,
 
         /** Reads the request and never answers: the client waits for its own timeout. */
         HANG,
 
-        /** Closes the connection at once, like a service that is gone. */
-        DROP,
+        // No "drop the connection" mode on purpose: the recorder sits behind Testcontainers' SSH tunnel to
+        // the host, and hard-dropped connections leave that tunnel broken for the rest of the run. For the
+        // plugin a dropped connection and an error answer take the same path anyway (retry after 1 s).
     }
 
     class Received(val atMs: Long, val method: String, val path: String?, val authorization: String?, val contentType: String?, val body: JsonObject) {
@@ -61,7 +62,6 @@ class HttpRecorder : AutoCloseable {
                     Mode.OK -> MockResponse().setResponseCode(200)
                     Mode.FAIL -> MockResponse().setResponseCode(500)
                     Mode.HANG -> MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE)
-                    Mode.DROP -> MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START)
                 }
             }
         }

@@ -41,6 +41,8 @@ data class AmqpConfig(
     val bufferCapacity: Int,
     /** Async only, with confirms: messages sent but not yet confirmed, at most. */
     val inflightCapacity: Int,
+    /** Publishes with the mandatory flag, so the broker returns messages no queue takes instead of dropping them. */
+    val mandatory: Boolean,
 ) {
     enum class PublishMode { SYNC, ASYNC }
 
@@ -55,7 +57,7 @@ data class AmqpConfig(
             "exchange=$exchange, publisherConfirm=$publisherConfirm, confirmTimeoutMs=$confirmTimeoutMs, " +
             "heartbeatSeconds=$heartbeatSeconds, connectionTimeoutMs=$connectionTimeoutMs, persistent=$persistent, " +
             "messageId=$messageId, declareExchange=$declareExchange, publishMode=$publishMode, " +
-            "bufferCapacity=$bufferCapacity, inflightCapacity=$inflightCapacity)"
+            "bufferCapacity=$bufferCapacity, inflightCapacity=$inflightCapacity, mandatory=$mandatory)"
 
     companion object {
         fun from(source: ConfigSource): AmqpConfig = source.read {
@@ -78,6 +80,7 @@ data class AmqpConfig(
                 publishMode = enum(amqpPublishModeKey, PublishMode.values(), PublishMode.SYNC, ignoreCase = true),
                 bufferCapacity = positive(amqpBufferCapacityKey, default = 1_000),
                 inflightCapacity = positive(amqpInflightCapacityKey, default = 1_000),
+                mandatory = flag(amqpMandatoryKey),
             )
         }
 

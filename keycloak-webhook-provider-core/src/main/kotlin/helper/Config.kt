@@ -29,6 +29,7 @@ const val amqpDeclareExchangeKey = "WEBHOOK_AMQP_DECLARE_EXCHANGE"
 const val amqpPublishModeKey = "WEBHOOK_AMQP_PUBLISH_MODE"
 const val amqpBufferCapacityKey = "WEBHOOK_AMQP_BUFFER_CAPACITY"
 const val amqpInflightCapacityKey = "WEBHOOK_AMQP_INFLIGHT_CAPACITY"
+const val amqpMandatoryKey = "WEBHOOK_AMQP_MANDATORY"
 
 const val syslogProtocol = "WEBHOOK_SYSLOG_PROTOCOL"
 const val syslogHostname = "WEBHOOK_SYSLOG_HOSTNAME"

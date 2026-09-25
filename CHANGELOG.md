@@ -35,6 +35,8 @@
   (`WEBHOOK_AMQP_BUFFER_CAPACITY`), so logins never wait for RabbitMQ. With publisher confirms, delivery is at least
   once: unconfirmed messages are sent again after a reconnect or a confirm timeout, refused ones are retried 5 times,
   and at most `WEBHOOK_AMQP_INFLIGHT_CAPACITY` wait for a confirm at once
+- `WEBHOOK_AMQP_MANDATORY`: publishes with the mandatory flag and logs every message the broker returns because no
+  queue is bound to receive it (confirms alone report those as delivered)
 - A warning when TLS is on without a truststore, since the broker's certificate is then not verified
 - Behaviour tests for every provider, including RabbitMQ through Testcontainers, run by CI on every push
 - README: publisher confirm settings, defaults, routing keys, and how delivery behaves when a destination is down

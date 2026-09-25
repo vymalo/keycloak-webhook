@@ -281,15 +281,22 @@ The following settings are all optional. Leaving them unset keeps the behaviour 
   beforehand. If an exchange with that name already exists with other settings, it is used as it is and a warning is
   logged.
 
-- **`WEBHOOK_AMQP_PUBLISH_MODE`**
+- **`WEBHOOK_AMQP_MANDATORY`**  
+  `"true"` publishes with the mandatory flag. RabbitMQ drops a message that no queue is bound to receive, and
+  confirms it anyway, so publisher confirms alone can't tell "delivered" from "went nowhere". With this option the
+  broker hands such messages back, and the plugin logs each one as an error (exchange, routing key, reason). They are
+  not retried: routing only changes when someone binds a queue. To keep them, give the exchange an
+  [alternate exchange](https://www.rabbitmq.com/docs/ae) on the broker.
+
+- **`WEBHOOK_AMQP_PUBLISH_MODE`**  
   `sync` (the default) publishes on the Keycloak request thread. `async` hands events to a background publisher, so a
   login never waits for RabbitMQ. See [Delivery and Lifecycle](#delivery-and-lifecycle).
 
-- **`WEBHOOK_AMQP_BUFFER_CAPACITY`**
+- **`WEBHOOK_AMQP_BUFFER_CAPACITY`**  
   Async only: how many events are kept in memory while the broker is slow or unreachable. Defaults to `1000`. When
   it's full, the oldest event is dropped to make room.
 
-- **`WEBHOOK_AMQP_INFLIGHT_CAPACITY`**
+- **`WEBHOOK_AMQP_INFLIGHT_CAPACITY`**  
   Async with publisher confirms only: how many messages may wait for their confirm at once. Defaults to `1000`.
 
 Messages are published with the routing key `KC_CLIENT.<realmId>.<clientId>.<userId>.<type>` (missing ids become

@@ -50,9 +50,12 @@ class AsyncAmqpTransport(private val config: AmqpConfig) : Transport {
         val refusedDropped = AtomicLong()
         /** Messages lost to a full buffer, oldest first. */
         val overflowDropped = AtomicLong()
+        /** With WEBHOOK_AMQP_MANDATORY: messages the broker handed back because no queue takes them. */
+        val unroutable = AtomicLong()
     }
 
     internal val stats = Stats()
+    private val unroutable = UnroutableReturns(stats.unroutable)
 
     @Volatile
     private var accepting = true
@@ -122,8 +125,9 @@ class AsyncAmqpTransport(private val config: AmqpConfig) : Transport {
         if (lost > 0) logger.warn("AMQP publisher stopped with {} undelivered messages", lost)
         logger.info(
             "AMQP publisher stopped: {} connections, {} replaced by the watchdog, {} messages resent, " +
-                "{} dropped when the buffer was full, {} dropped after repeated refusals",
+                "{} dropped when the buffer was full, {} dropped after repeated refusals, {} returned as unroutable",
             stats.connects, stats.watchdogRecycles, stats.resent, stats.overflowDropped, stats.refusedDropped,
+            stats.unroutable,
         )
     }
 
@@ -150,7 +154,7 @@ class AsyncAmqpTransport(private val config: AmqpConfig) : Transport {
         val seqNo = channel.nextPublishSeqNo
         tracker?.sent(seqNo, message)
         try {
-            channel.basicPublish(config.exchange, message.routingKey, message.properties, message.body)
+            channel.basicPublish(config.exchange, message.routingKey, config.mandatory, message.properties, message.body)
         } catch (e: Exception) {
             // If the tracker no longer has it, a recycle already put it back in the buffer.
             if (tracker == null || tracker.forget(seqNo) != null) requeue(listOf(message))
@@ -163,6 +167,7 @@ class AsyncAmqpTransport(private val config: AmqpConfig) : Transport {
         val connection = connections.open().also { connection = it }
         stats.connects.incrementAndGet()
         val channel = connection.createChannel().also { channel = it }
+        if (config.mandatory) channel.addReturnListener(unroutable)
         if (config.publisherConfirm) {
             channel.confirmSelect()
             val tracker = ConfirmTracker<AmqpMessage>(config.inflightCapacity).also { tracker = it }

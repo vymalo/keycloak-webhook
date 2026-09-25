@@ -26,6 +26,9 @@ class AmqpTransport(private val config: AmqpConfig) : Transport {
     /** Built once: identical for every message, except the message id when that is on. */
     private val baseProperties = AmqpMessage.properties(config)
 
+    /** With WEBHOOK_AMQP_MANDATORY: messages the broker handed back because no queue takes them. */
+    internal val unroutable = UnroutableReturns()
+
     // Replaced only under `this`; volatile so a healthy channel is found without taking a lock.
     @Volatile
     private var connection: Connection? = null
@@ -52,7 +55,7 @@ class AmqpTransport(private val config: AmqpConfig) : Transport {
         synchronized(this) {
             try {
                 val message = AmqpMessage.of(payload, config, baseProperties)
-                channel.basicPublish(config.exchange, message.routingKey, message.properties, message.body)
+                channel.basicPublish(config.exchange, message.routingKey, config.mandatory, message.properties, message.body)
                 if (config.publisherConfirm) channel.waitForConfirms(config.confirmTimeoutMs)
                 logger.debug("Webhook message sent: {}", payload)
             } catch (e: TimeoutException) {
@@ -119,7 +122,9 @@ class AmqpTransport(private val config: AmqpConfig) : Transport {
         synchronized(this) { closeQuietly() }
         val connection = connections.open()
         val channel = try {
-            connection.createChannel().also { if (config.publisherConfirm) it.confirmSelect() }
+            connection.createChannel()
+                .also { if (config.publisherConfirm) it.confirmSelect() }
+                .also { if (config.mandatory) it.addReturnListener(unroutable) }
         } catch (e: Exception) {
             connection.abort()
             throw e

@@ -402,24 +402,43 @@ restarted.
 
 #### Choosing a publish mode
 
-Measured with the integration tests: Keycloak 26.2.3, steady traffic of 25 requests a second (logins, refreshes,
-userinfo, introspection, logouts), and RabbitMQ hanging for 2 minutes in the middle.
+Measured with the integration tests on Keycloak 26.2.3 and RabbitMQ 3.13, under steady traffic of 25 requests a
+second (logins, refreshes, userinfo, introspection, logouts, service accounts). "async" means
+`WEBHOOK_AMQP_PUBLISH_MODE=async`; "confirms" means `WEBHOOK_AMQP_ENABLE_PUBLISHER_CONFIRM="true"`.
 
-| Setup | Requests served during the outage (of ~3,000) | Login latency during the outage | Events delivered |
-|-------|-----------------------------------------------|----------------------------------|------------------|
-| sync (the default) | 264 | p99 about 110 s: requests hang until the broker is back | all, this time; nothing guarantees it |
-| sync + confirms | 31 | p50 30 s, up to 70 s: requests queue in 5 s steps | all, this time |
-| async | ~3,000 | p99 32 ms | all, this time; a dropped connection would lose what was in flight |
-| async + confirms | ~3,000 | p99 32 ms | all, plus 3 duplicates (resent, same message id) |
+One broker that hangs for 2 minutes:
 
-In sync mode a RabbitMQ outage becomes a Keycloak outage, because every request waits for the broker. For production,
-`WEBHOOK_AMQP_PUBLISH_MODE=async` with `WEBHOOK_AMQP_ENABLE_PUBLISHER_CONFIRM="true"` and
-`WEBHOOK_AMQP_MESSAGE_ID="true"` keeps Keycloak responsive and delivers at least once. Size
-`WEBHOOK_AMQP_BUFFER_CAPACITY` as your peak events per second times the longest outage you want to ride out;
-beyond that the oldest events are dropped. A buffered event takes about 1 KB of heap (1.3 KB with message ids;
-measured with realistic login and admin events), so a full 100,000-event buffer holds about 100–130 MB. The memory is
-only used while the buffer is actually filling up during an outage. With a healthy broker the setups perform about the same (50,000 events,
-p99 200–225 ms in both sync and async with confirms).
+| Setup | Requests served during the hang (of ~3,000) | Latency during the hang | Events delivered |
+|-------|---------------------------------------------|-------------------------|------------------|
+| sync (the default) | 311 | p99 108 s: requests wait until the broker is back | 799 of 1,091: 292 lost without a trace |
+| sync + confirms | 33 | p50 30 s, up to 70 s: requests queue in 5 s steps | all |
+| async | 3,002 | p99 23 ms | all, this time |
+| async + confirms | 3,002 | p99 24 ms | all, plus 2 duplicates (resent, same message id) |
+
+A three-node cluster with quorum queues (see `ClusterScenarios` in the integration tests):
+
+| Setup | Healthy, 50,000 events | Node crash | Rolling restart | Majority lost for 60 s | Events lost |
+|-------|------------------------|------------|-----------------|------------------------|-------------|
+| sync | 213/s, p99 214 ms | p99 43 ms | p99 31 ms | p99 67 s | 1, in the crash |
+| sync + confirms | **58/s, p99 1.3 s** | up to 7 s | up to 0.6 s | p99 69 s | 1, in the crash |
+| async | 219/s, p99 221 ms | p99 35 ms | p99 36 ms | p99 34 ms | 1, in the crash |
+| async + confirms | 217/s, p99 226 ms | p99 29 ms | p99 30 ms | p99 28 ms | none |
+
+What that means:
+
+- In sync mode a RabbitMQ outage becomes a Keycloak outage, because every request waits for the broker; without
+  confirms, events can also vanish silently.
+- Sync with confirms on quorum queues is slow even when everything is healthy: every request waits until a majority
+  of nodes has stored its message, one request at a time.
+- Only async with confirms kept Keycloak fast through every disruption and lost nothing. A message that was on its way
+  to a crashing node is sent again, so consumers can see a duplicate; `WEBHOOK_AMQP_MESSAGE_ID="true"` gives each
+  event one id across resends so they can drop it.
+
+For production that means `WEBHOOK_AMQP_PUBLISH_MODE=async`, `WEBHOOK_AMQP_ENABLE_PUBLISHER_CONFIRM="true"` and
+`WEBHOOK_AMQP_MESSAGE_ID="true"`. Size `WEBHOOK_AMQP_BUFFER_CAPACITY` as your peak events per second times the longest
+outage you want to ride out; beyond that the oldest events are dropped. A buffered event takes about 1 KB of heap
+(1.3 KB with message ids; measured with realistic login and admin events), so a full 100,000-event buffer holds about
+100–130 MB. The memory is only used while the buffer is actually filling up during an outage.
 
 The core module turns Keycloak events into a `WebhookPayload` with pure functions. Each provider module only
 implements `Transport` (`publish` and `close`) and parses its own settings.
@@ -454,10 +473,14 @@ We welcome contributions! To get started:
   ./gradlew integrationTest --tests '*DefaultsSmokeTest*'      # default settings on every supported Keycloak version
   ./gradlew integrationTest --tests '*SyncWithConfirmsTest*'   # production scenarios, sync publishing with confirms
   ./gradlew integrationTest --tests '*AsyncAtLeastOnceTest*'   # the same scenarios, async publishing
+  ./gradlew integrationTest --tests '*ClusterTest'             # every setup against a three-node quorum cluster
   ```
   The production scenarios cover real logins, failed logins and admin events, one broker connection for all
   sessions, logins while the broker hangs, an organic load (login, refresh, userinfo, introspection, logout, service
-  accounts) of `-Pevents=50000` events checked for completeness per event type, and a graceful Keycloak shutdown.
+  accounts) of `-Pevents=50000` events checked for completeness per event type, a long outage, and a graceful Keycloak
+  shutdown. Each runs for four publish setups, on one broker and on a three-node quorum cluster (`*ClusterTest`),
+  which also gets a node crash, a rolling restart and the loss of its majority. All of it takes about 1.5 hours;
+  running the classes one by one keeps memory use down.
   `-PkeycloakVersion=26.2.3` picks the version for those scenarios, `-PkeycloakVersions=21.1.2,26.2.3` the smoke
   matrix, and `-Pconcurrency=32` the number of parallel clients.
 

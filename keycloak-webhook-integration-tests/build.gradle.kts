@@ -45,6 +45,9 @@ tasks.register<Test>("integrationTest") {
     classpath = sourceSets.test.get().runtimeClasspath
     useJUnitPlatform()
     maxHeapSize = "2g"
+    // A fresh test JVM per class: each class starts its own containers anyway, and this hands its
+    // memory back before the next one. run-sequentially.sh goes further, with one Gradle run per class.
+    forkEvery = 1
 
     dependsOn(pluginJars)
     doFirst {

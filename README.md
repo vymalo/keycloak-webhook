@@ -479,8 +479,10 @@ We welcome contributions! To get started:
   sessions, logins while the broker hangs, an organic load (login, refresh, userinfo, introspection, logout, service
   accounts) of `-Pevents=50000` events checked for completeness per event type, a long outage, and a graceful Keycloak
   shutdown. Each runs for four publish setups, on one broker and on a three-node quorum cluster (`*ClusterTest`),
-  which also gets a node crash, a rolling restart and the loss of its majority. All of it takes about 1.5 hours;
-  running the classes one by one keeps memory use down.
+  which also gets a node crash, a rolling restart and the loss of its majority. All of it takes about 1.5 hours.
+  `keycloak-webhook-integration-tests/run-sequentially.sh` runs every class in its own Gradle run, one after
+  another, which keeps memory use low and keeps finished results if the run is stopped; it passes extra arguments
+  (such as `-Pevents=2000`) to every run and writes a summary, logs and reports to `build/integration-test-runs/`.
   `-PkeycloakVersion=26.2.3` picks the version for those scenarios, `-PkeycloakVersions=21.1.2,26.2.3` the smoke
   matrix, and `-Pconcurrency=32` the number of parallel clients.
 

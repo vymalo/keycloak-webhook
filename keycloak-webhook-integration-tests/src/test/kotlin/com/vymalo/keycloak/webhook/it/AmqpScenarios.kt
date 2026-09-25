@@ -262,7 +262,10 @@ abstract class ClusterScenarios(variant: Variant) : AmqpScenarios(variant, Topol
         stack.stop(first)
         stack.stop(second)
         Thread.sleep(60_000)
-        stack.restart(first, second)
+        // As RabbitMQ's docs ask: the node that stopped last starts first, since the others wait for its data.
+        // Started together, they can end up waiting on each other until they give up.
+        stack.startNode(second)
+        stack.restart(first)
     }
 }
 

@@ -251,13 +251,20 @@ class Stack(
     /** A node shut down on purpose, as in a rolling restart or maintenance. */
     fun stop(node: Container) = node.dockerClient.stopContainerCmd(node.containerId).withTimeout(30).exec()
 
+    /** Starts a stopped or killed node without waiting for anything, for restarts that need a particular order. */
+    fun startNode(node: Container) {
+        node.dockerClient.startContainerCmd(node.containerId).exec()
+    }
+
     /**
      * Starts stopped or killed nodes again and waits until the cluster is whole. They rejoin with
      * their data. Nodes that must come back together (a lost majority) go in one call.
      */
     fun restart(vararg nodes: Container) {
         nodes.forEach { it.dockerClient.startContainerCmd(it.containerId).exec() }
-        awaitClusterHealthy()
+        // A restarted 3.13 node waits for its peers' tables for up to 10 x 30 s before it gives up, so
+        // healing after a lost majority can take minutes on a busy machine.
+        awaitClusterHealthy(timeoutMs = 360_000)
     }
 
     /** Waits until every node is up and, on a cluster, all of them run as one cluster again. */

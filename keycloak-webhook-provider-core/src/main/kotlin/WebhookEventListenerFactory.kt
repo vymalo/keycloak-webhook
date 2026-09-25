@@ -75,13 +75,17 @@ abstract class WebhookEventListenerFactory(
 
     /** Double-checked so the common path, every session after the first, is a single volatile read. */
     private fun wired(): Wiring = wiring ?: synchronized(this) {
-        wiring ?: Wiring(openTransport(config), EventFilter.parse(config[eventsTakenKey])).also { wiring = it }
+        wiring ?: Wiring(openTransport(config), EventFilter.parse(config[eventsTakenKey])).also {
+            wiring = it
+            LOG.info("Opened [{}] transport", providerId)
+        }
     }
 
     /** Server shutdown (or redeploy): the only place the transport is closed. */
     override fun close() {
         val closing = synchronized(this) { wiring.also { wiring = null } } ?: return
         runCatching { closing.transport.close() }
+            .onSuccess { LOG.info("Closed [{}] transport", providerId) }
             .onFailure { LOG.warn("Error closing [{}] transport", providerId, it) }
     }
 

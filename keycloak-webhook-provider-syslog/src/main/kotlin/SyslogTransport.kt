@@ -1,5 +1,6 @@
 package com.vymalo.keycloak.webhook
 
+import com.cloudbees.syslog.MessageFormat
 import com.cloudbees.syslog.sender.AbstractSyslogMessageSender
 import com.cloudbees.syslog.sender.TcpSyslogMessageSender
 import com.cloudbees.syslog.sender.UdpSyslogMessageSender
@@ -16,7 +17,12 @@ import org.slf4j.LoggerFactory
 class SyslogTransport(config: SyslogConfig) : Transport {
 
     private val sender: AbstractSyslogMessageSender = when (config.protocol) {
-        Protocol.TCP -> TcpSyslogMessageSender()
+        Protocol.TCP -> TcpSyslogMessageSender().apply {
+            // RFC 5425 frames carry their own length, so nothing may follow them. The library adds CRLF
+            // anyway; a strict receiver (syslog-ng) reads it as the next frame's header and drops the
+            // connection, losing messages. Newline-delimited formats keep it: there it is the boundary.
+            if (config.messageFormat == MessageFormat.RFC_5425) setPostfix("")
+        }
         Protocol.UDP -> UdpSyslogMessageSender()
     }.apply {
         // The HOSTNAME field names the machine that sent the message: this Keycloak, not the syslog server.

@@ -2,7 +2,6 @@ package com.vymalo.keycloak.webhook.it
 
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.MethodOrderer
 import org.junit.jupiter.api.Order
 import org.junit.jupiter.api.Test
@@ -171,9 +170,7 @@ class SyslogUdpTest : SyslogScenarios("udp")
 /**
  * TCP with the default RFC 5425 framing (octet counting).
  *
- * Known upstream bug, kept here so it stays visible: the sender writes CRLF after every
- * octet-counted frame. syslog-ng reads that as the next frame's header, rejects it, and closes the
- * connection, so every other message or so is lost. Remove @Disabled with the fix.
+ * Regression guard for an upstream bug: the sender wrote CRLF after every octet-counted frame, which
+ * syslog-ng read as the next frame's header before closing the connection, losing messages.
  */
-@Disabled("Known bug: CRLF after RFC 5425 octet-counted frames makes syslog-ng drop the connection; fixed later in this PR")
 class SyslogTcpTest : SyslogScenarios("tcp")

@@ -17,6 +17,9 @@
 - `WEBHOOK_AMQP_VHOST` is optional as documented, defaulting to `/` (leaving it out used to fail)
 - Syslog messages carried the Syslog server's hostname in their HOSTNAME field; they now carry
   `WEBHOOK_SYSLOG_HOSTNAME`, as documented. **This changes the HOSTNAME of every Syslog message.**
+- Syslog over TCP with the default RFC 5425 framing wrote CRLF after every octet-counted frame. Strict receivers such
+  as syslog-ng read it as the next frame's header, dropped the connection and lost messages; frames are now sent back
+  to back as RFC 5425 requires (newline-delimited formats keep their newline)
 
 ### Changed
 

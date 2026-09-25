@@ -400,6 +400,27 @@ A listener that is enabled in a realm but can't be set up, say because a require
 logins either. It logs the problem once, at ERROR, and drops its events until the config is fixed and Keycloak
 restarted.
 
+#### Choosing a publish mode
+
+Measured with the integration tests: Keycloak 26.2.3, steady traffic of 25 requests a second (logins, refreshes,
+userinfo, introspection, logouts), and RabbitMQ hanging for 2 minutes in the middle.
+
+| Setup | Requests served during the outage (of ~3,000) | Login latency during the outage | Events delivered |
+|-------|-----------------------------------------------|----------------------------------|------------------|
+| sync (the default) | 264 | p99 about 110 s: requests hang until the broker is back | all, this time; nothing guarantees it |
+| sync + confirms | 31 | p50 30 s, up to 70 s: requests queue in 5 s steps | all, this time |
+| async | ~3,000 | p99 32 ms | all, this time; a dropped connection would lose what was in flight |
+| async + confirms | ~3,000 | p99 32 ms | all, plus 3 duplicates (resent, same message id) |
+
+In sync mode a RabbitMQ outage becomes a Keycloak outage, because every request waits for the broker. For production,
+`WEBHOOK_AMQP_PUBLISH_MODE=async` with `WEBHOOK_AMQP_ENABLE_PUBLISHER_CONFIRM="true"` and
+`WEBHOOK_AMQP_MESSAGE_ID="true"` keeps Keycloak responsive and delivers at least once. Size
+`WEBHOOK_AMQP_BUFFER_CAPACITY` as your peak events per second times the longest outage you want to ride out;
+beyond that the oldest events are dropped. A buffered event takes about 1 KB of heap (1.3 KB with message ids;
+measured with realistic login and admin events), so a full 100,000-event buffer holds about 100–130 MB. The memory is
+only used while the buffer is actually filling up during an outage. With a healthy broker the setups perform about the same (50,000 events,
+p99 200–225 ms in both sync and async with confirms).
+
 The core module turns Keycloak events into a `WebhookPayload` with pure functions. Each provider module only
 implements `Transport` (`publish` and `close`) and parses its own settings.
 
@@ -426,6 +447,19 @@ We welcome contributions! To get started:
   setting `SKIP_DOCKER_TESTS=true`. CI never skips them. If your antivirus scans HTTPS traffic (AVG, Avast and
   others do by default), it also re-signs the tests' local TLS connections: the TLS test that verifies the broker's
   certificate then skips itself and names the interceptor.
+- Integration tests run the built plugin jars inside real Keycloak containers against RabbitMQ. They are not part of
+  `build` or CI; start them on demand (Docker required, expect several minutes):
+  ```bash
+  ./gradlew integrationTest                                    # everything below
+  ./gradlew integrationTest --tests '*DefaultsSmokeTest*'      # default settings on every supported Keycloak version
+  ./gradlew integrationTest --tests '*SyncWithConfirmsTest*'   # production scenarios, sync publishing with confirms
+  ./gradlew integrationTest --tests '*AsyncAtLeastOnceTest*'   # the same scenarios, async publishing
+  ```
+  The production scenarios cover real logins, failed logins and admin events, one broker connection for all
+  sessions, logins while the broker hangs, an organic load (login, refresh, userinfo, introspection, logout, service
+  accounts) of `-Pevents=50000` events checked for completeness per event type, and a graceful Keycloak shutdown.
+  `-PkeycloakVersion=26.2.3` picks the version for those scenarios, `-PkeycloakVersions=21.1.2,26.2.3` the smoke
+  matrix, and `-Pconcurrency=32` the number of parallel clients.
 
 3. **Follow Code Conventions:**
 

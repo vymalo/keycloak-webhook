@@ -393,8 +393,16 @@ Keycloak, so it cannot fail a login or an admin action:
   - Events only live in memory: if the buffer is full the oldest are dropped, and a crash loses what's buffered.
   - On shutdown the publisher gets up to 5 seconds to send what's left, plus up to 5 more if the broker stops
     answering. It then logs how much was lost, along with totals for reconnects, resends and drops.
-- **HTTP:** every URL is tried up to 3 times, 1 second apart, one URL after another.
-- **Syslog:** UDP is fire-and-forget; the TCP sender reconnects on its own.
+- **HTTP:** every URL is tried up to 3 times, 1 second apart, one URL after another, on the request thread. A slow
+  or failing URL therefore slows every login. Measured with the integration tests (Keycloak 26.2.3, 25 requests a
+  second): while one of two URLs answered 500, each request took about 2 s longer; while one hung without answering,
+  each request took 32 s (three 10 s client timeouts plus the pauses), and Keycloak served 7 requests in 30 s instead
+  of about 750.
+- **Syslog:** the sender sends on the request thread.
+  - UDP is fire-and-forget: while the server was down or hung for 30 s, logins stayed fast but those events were lost.
+    While the server's host name couldn't be resolved, requests took up to 8 s.
+  - TCP reconnects on its own. A server that hung for 30 s held requests for up to 17 s; they were delivered
+    afterwards. A server that was down cost up to 15 s per request, and those events were lost.
 
 A listener that is enabled in a realm but can't be set up, say because a required setting is missing, doesn't fail
 logins either. It logs the problem once, at ERROR, and drops its events until the config is fixed and Keycloak

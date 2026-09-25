@@ -230,11 +230,14 @@ class Stack(
     }
 
     /** Asked from Docker every time: a restarted container can come back with a different address. */
+    /**
+     * A container's address on the stack's own network. Containers can sit on more than one (Testcontainers'
+     * host access adds the default bridge), and only this one is where the plugin's traffic flows.
+     */
     private fun ipOf(node: Container): String? = node.dockerClient.inspectContainerCmd(node.containerId).exec()
-        .networkSettings.networks.values.mapNotNull { it.ipAddress }.firstOrNull { it.isNotBlank() }
+        .networkSettings.networks.values.firstOrNull { it.networkID == network.id }?.ipAddress
 
-    private fun keycloakIp(): String =
-        keycloak.containerInfo.networkSettings.networks.values.mapNotNull { it.ipAddress }.first { it.isNotBlank() }
+    private fun keycloakIp(): String = checkNotNull(ipOf(keycloak)) { "Keycloak isn't on the stack's network" }
 
     // ---- disturbing the broker ----
 

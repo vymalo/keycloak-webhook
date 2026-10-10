@@ -110,8 +110,13 @@ class AsyncEdgeCaseTest {
                 drain(queue).forEach { seen += it.eventId() }
                 seen.takeIf { it.containsAll(newest) }
             }
-            // m0 was already on the wire when the broker hung, so it may still arrive over the old connection.
-            assertTrue(seen - newest - "m0" == emptySet<String>(), "only the newest should survive, got $seen")
+            // With one confirm slot, the publisher takes exactly one event before the hang stops it, and
+            // that one may still arrive: it sits in the broker's socket buffer on the old connection.
+            // Which event it is depends on when the publisher thread polls during the burst (usually
+            // m0, but any of m0..m6), so any one older event is allowed, and only one: with two slots
+            // this fails every time.
+            val older = seen - newest
+            assertTrue(older.size <= 1, "only the newest and at most one event already on the wire should arrive, got $seen")
             assertTrue(transport.stats.overflowDropped.get() >= 6, "dropped ${transport.stats.overflowDropped}")
         }
     }

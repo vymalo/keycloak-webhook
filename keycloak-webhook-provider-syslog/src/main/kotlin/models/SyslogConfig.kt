@@ -5,26 +5,32 @@ import com.cloudbees.syslog.MessageFormat
 import com.cloudbees.syslog.Severity
 import com.vymalo.keycloak.webhook.helper.*
 
+/** Everything the Syslog transport needs, parsed and validated up front. */
 data class SyslogConfig(
-    val protocol: String,
+    val protocol: Protocol,
+    /** Required but not used yet: messages carry [serverHostname] instead (a known upstream quirk). */
     val hostname: String,
     val appName: String,
     val facility: Facility,
     val severity: Severity,
     val serverHostname: String,
-    val serverPort: String,
+    val serverPort: Int,
     val messageFormat: MessageFormat,
 ) {
+    enum class Protocol { TCP, UDP }
+
     companion object {
-        fun fromEnv(): SyslogConfig = SyslogConfig(
-            protocol = syslogProtocol.cff().uppercase(),
-            hostname = syslogHostname.cff(),
-            appName = syslogAppName.cff(),
-            facility = Facility.valueOf(syslogFacility.cfe { Facility.SYSLOG.name }),
-            severity = Severity.valueOf(syslogSeverity.cfe { Severity.INFORMATIONAL.name }),
-            serverHostname = syslogServerHostname.cff(),
-            serverPort = syslogServerPort.cff(),
-            messageFormat = MessageFormat.valueOf(syslogMessageFormat.cfe { MessageFormat.RFC_5425.name }),
-        )
+        fun from(source: ConfigSource): SyslogConfig = source.read {
+            SyslogConfig(
+                protocol = enum(syslogProtocol, Protocol.values(), ignoreCase = true),
+                hostname = required(syslogHostname),
+                appName = required(syslogAppName),
+                facility = enum(syslogFacility, Facility.values(), default = Facility.SYSLOG),
+                severity = enum(syslogSeverity, Severity.values(), default = Severity.INFORMATIONAL),
+                serverHostname = required(syslogServerHostname),
+                serverPort = int(syslogServerPort),
+                messageFormat = enum(syslogMessageFormat, MessageFormat.values(), default = MessageFormat.RFC_5425),
+            )
+        }
     }
 }

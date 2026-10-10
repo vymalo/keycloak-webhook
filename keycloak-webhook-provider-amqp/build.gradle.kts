@@ -1,8 +1,6 @@
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
-
 plugins {
     kotlin("jvm")
-    id("com.github.johnrengelman.shadow") version "8.1.1"
+    id("com.gradleup.shadow") version "9.4.2"
 }
 
 group = "com.vymalo.keycloak.webhook"
@@ -14,11 +12,14 @@ repositories {
 
 dependencies {
     testImplementation(kotlin("test"))
+    testImplementation(testFixtures(project(":keycloak-webhook-provider-core")))
+    testImplementation("org.testcontainers", "testcontainers-rabbitmq", "2.0.5")
+    testImplementation("org.testcontainers", "testcontainers-junit-jupiter", "2.0.5")
 
     implementation(project(":keycloak-webhook-provider-core"))
 
     implementation("org.keycloak", "keycloak-services", "26.4.0")
-    
+
     implementation("com.google.code.gson", "gson", "2.12.1")
     implementation("com.rabbitmq", "amqp-client", "5.25.0")
     implementation("org.slf4j", "slf4j-log4j12", "2.0.17")
@@ -26,16 +27,17 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    // Broker tests skip themselves without Docker; say so on the console instead of only in the report.
+    testLogging { events("skipped") }
 }
 kotlin {
     jvmToolchain(17)
 }
 
 tasks {
-    val shadowJar by existing(ShadowJar::class) {
+    shadowJar {
         dependencies {
             include(dependency("com.rabbitmq:amqp-client"))
         }
-        dependsOn(build)
     }
 }

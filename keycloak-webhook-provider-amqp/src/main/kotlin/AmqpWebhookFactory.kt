@@ -1,3 +1,10 @@
 package com.vymalo.keycloak.webhook
 
-open class AmqpWebhookFactory : AbstractWebhookEventListenerFactory(AmqpWebhookHandler())
+import com.vymalo.keycloak.webhook.models.AmqpConfig
+
+/** The `webhook-amqp` event listener, registered through META-INF/services. */
+open class AmqpWebhookFactory : WebhookEventListenerFactory(PROVIDER_ID, { AmqpTransport(AmqpConfig.from(it)) }) {
+    companion object {
+        const val PROVIDER_ID = "webhook-amqp"
+    }
+}

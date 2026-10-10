@@ -194,6 +194,17 @@ spec:
 
 ## 3. Environment Variables
 
+Settings are read from environment variables, with JVM system properties (`-DWEBHOOK_...=...`) as a fallback. They
+are read once, when the listener handles its first event. If something is missing or malformed, that first event fails
+with a single error that lists every problem key, and the next event tries again.
+
+### All Providers
+
+- **`WEBHOOK_EVENTS_TAKEN` (optional)**  
+  A comma-separated list of event types that should trigger webhooks, e.g. `"LOGIN,REGISTER,LOGOUT"`. Admin events use
+  `<RESOURCE>-<OPERATION>`, e.g. `USER-CREATE`. If not set, all events are sent. Note that an *empty* value is not the
+  same as unset: it lets no events through.
+
 ### HTTP Provider
 
 - **`WEBHOOK_HTTP_BASE_PATH`**  
@@ -220,13 +231,24 @@ spec:
   Port for RabbitMQ.
 
 - **`WEBHOOK_AMQP_VHOST` (optional)**  
-  Virtual host for RabbitMQ.
+  Virtual host for RabbitMQ. Defaults to `/`.
 
 - **`WEBHOOK_AMQP_EXCHANGE`**  
-  Exchange name for RabbitMQ.
+  Exchange name for RabbitMQ. The exchange must already exist; the plugin does not declare it.
 
 - **`WEBHOOK_AMQP_SSL` (optional)**  
-  `"yes"` or `"no"`, indicating if SSL is enabled.
+  `"true"` enables TLS; any other value (including `"yes"`) leaves it off. Note that TLS currently accepts any server
+  certificate.
+
+- **`WEBHOOK_AMQP_ENABLE_PUBLISHER_CONFIRM` (optional)**  
+  `"true"` makes every publish wait until the broker confirms the message, so a lost message is logged as an error
+  instead of disappearing silently. Costs one broker round trip per event.
+
+- **`WEBHOOK_AMQP_PUBLISHER_CONFIRM_TIMEOUT` (optional)**  
+  How long to wait for a confirm, in milliseconds. Defaults to `5000`.
+
+Messages are published with the routing key `KC_CLIENT.<realmId>.<clientId>.<userId>.<type>` (missing ids become
+`xxx`), so consumers can bind on any part, e.g. `KC_CLIENT.*.*.*.LOGIN`.
 
 ### Syslog Provider
 
@@ -234,16 +256,17 @@ spec:
   `"TCP"` or `"UDP"` protocol for Syslog communication.
 
 - **`WEBHOOK_SYSLOG_HOSTNAME`**  
-  Hostname of the Keycloak instance.
+  Hostname of the Keycloak instance. Required, but currently not used: messages carry the Syslog server hostname in
+  their HOSTNAME field instead.
 
 - **`WEBHOOK_SYSLOG_APP_NAME`**  
   Application name for Syslog messages.
 
-- **`WEBHOOK_SYSLOG_FACILITY`**  
-  Syslog facility (e.g., USER, DAEMON, AUTH).
+- **`WEBHOOK_SYSLOG_FACILITY` (optional)**  
+  Syslog facility (e.g., USER, DAEMON, AUTH). Defaults to `SYSLOG`.
 
-- **`WEBHOOK_SYSLOG_SEVERITY`**  
-  Syslog severity level (e.g., INFORMATIONAL, WARNING, ERROR).
+- **`WEBHOOK_SYSLOG_SEVERITY` (optional)**  
+  Syslog severity level (e.g., INFORMATIONAL, WARNING, ERROR). Defaults to `INFORMATIONAL`.
 
 - **`WEBHOOK_SYSLOG_SERVER_HOSTNAME`**  
   Hostname of the Syslog server.
@@ -251,12 +274,8 @@ spec:
 - **`WEBHOOK_SYSLOG_SERVER_PORT`**  
   Port of the Syslog server.
 
-- **`WEBHOOK_SYSLOG_MESSAGE_FORMAT`**  
-  `"RFC_3164"`, `"RFC_5424"` or `"RFC_5425"` message format.
-
-- **`WEBHOOK_EVENTS_TAKEN` (optional)**  
-  A comma-separated list of Keycloak events (e.g., `"LOGIN,REGISTER,LOGOUT"`) that should trigger webhooks. If not
-  specified, all events are processed.
+- **`WEBHOOK_SYSLOG_MESSAGE_FORMAT` (optional)**  
+  `"RFC_3164"`, `"RFC_5424"` or `"RFC_5425"` message format. Defaults to `RFC_5425`.
 
 ---
 
@@ -298,6 +317,28 @@ graph TD
 - **External Systems:**  
   Webhook notifications are sent to an HTTP server, published to a RabbitMQ broker, or forwarded to a Syslog server.
 
+### Delivery and Lifecycle
+
+Each provider has one *transport* (its broker connection, HTTP client or Syslog sender). The transport is opened when
+the listener handles its first event and stays open until Keycloak shuts down; Keycloak sessions come and go without
+reconnecting. Sending happens on the Keycloak request thread, and a delivery problem is logged, never passed back to
+Keycloak, so it cannot fail a login or an admin action:
+
+- **AMQP:** if the connection is down, the plugin reconnects inline (3 attempts, 1 second apart). If all three fail,
+  the event is logged and dropped. Requests that arrive during a reconnect wait for it rather than starting their
+  own, and for 5 seconds after a failed one, events are dropped without trying, so a dead broker doesn't stack up
+  logins. Publishing is serialized, so with publisher confirms on, a slow broker caps the event rate at one confirm
+  round trip at a time.
+- **HTTP:** every URL is tried up to 3 times, 1 second apart, one URL after another.
+- **Syslog:** UDP is fire-and-forget; the TCP sender reconnects on its own.
+
+A listener that is enabled in a realm but can't be set up, say because a required setting is missing, doesn't fail
+logins either. It logs the problem once, at ERROR, and drops its events until the config is fixed and Keycloak
+restarted.
+
+The core module turns Keycloak events into a `WebhookPayload` with pure functions. Each provider module only
+implements `Transport` (`publish` and `close`) and parses its own settings.
+
 ---
 
 ## 5. Contribute
@@ -315,11 +356,16 @@ We welcome contributions! To get started:
   ```bash
   ./gradlew clean shadow
   ```
+- Run the tests with `./gradlew test`. The AMQP broker tests start RabbitMQ through
+  [Testcontainers](https://testcontainers.com). Docker is optional locally: without it those tests are skipped
+  (listed as `SKIPPED`), and everything else still runs. With Docker you can still skip them for a quicker run by
+  setting `SKIP_DOCKER_TESTS=true`. CI never skips them.
 
 3. **Follow Code Conventions:**
 
 - Keep the code style consistent with the existing modules.
-- Write tests where applicable.
+- Write tests where applicable. The provider tests pin exactly what goes on the wire (see `Fixtures` in the core
+  module's test fixtures); a change that alters that output should be deliberate, opt-in, and documented.
 - Update the README and documentation if your changes require it.
 
 4. **Submit a Pull Request:**  

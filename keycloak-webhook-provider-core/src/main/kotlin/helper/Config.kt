@@ -1,5 +1,7 @@
 package com.vymalo.keycloak.webhook.helper
 
+// Every setting the plugin reads, by env var name. Parsing lives in each module's *Config.from().
+
 const val eventsTakenKey = "WEBHOOK_EVENTS_TAKEN"
 
 const val httpBaseBathKey = "WEBHOOK_HTTP_BASE_PATH"
@@ -24,10 +26,3 @@ const val syslogSeverity = "WEBHOOK_SYSLOG_SEVERITY"
 const val syslogServerHostname = "WEBHOOK_SYSLOG_SERVER_HOSTNAME"
 const val syslogServerPort = "WEBHOOK_SYSLOG_SERVER_PORT"
 const val syslogMessageFormat = "WEBHOOK_SYSLOG_MESSAGE_FORMAT"
-
-private fun getConfig(key: String): String? = System.getenv(key) ?: System.getProperty(key)
-
-fun String.cf() = getConfig(this)
-fun String.bf(compare: String = "true") = this.cf() == compare
-fun String.cff() = getConfig(this)!!
-fun String.cfe(defaultValue: () -> String) = getConfig(this).orEmpty().ifEmpty(defaultValue)

@@ -1,5 +1,7 @@
 package com.vymalo.keycloak.webhook.helper
 
+// Every setting the plugin reads, by env var name. Parsing lives in each module's *Config.from().
+
 const val eventsTakenKey = "WEBHOOK_EVENTS_TAKEN"
 
 const val httpBaseBathKey = "WEBHOOK_HTTP_BASE_PATH"
@@ -15,6 +17,19 @@ const val amqpExchangeKey = "WEBHOOK_AMQP_EXCHANGE"
 const val amqpSsl = "WEBHOOK_AMQP_SSL"
 const val amqpEnablePublisherConfirm = "WEBHOOK_AMQP_ENABLE_PUBLISHER_CONFIRM"
 const val amqpPublisherConfirmTimeout = "WEBHOOK_AMQP_PUBLISHER_CONFIRM_TIMEOUT"
+const val amqpAddressesKey = "WEBHOOK_AMQP_ADDRESSES"
+const val amqpHeartbeatSecondsKey = "WEBHOOK_AMQP_HEARTBEAT_SECONDS"
+const val amqpConnectionTimeoutKey = "WEBHOOK_AMQP_CONNECTION_TIMEOUT"
+const val amqpSslTruststoreKey = "WEBHOOK_AMQP_SSL_TRUSTSTORE"
+const val amqpSslTruststorePasswordKey = "WEBHOOK_AMQP_SSL_TRUSTSTORE_PASSWORD"
+const val amqpSslTruststoreTypeKey = "WEBHOOK_AMQP_SSL_TRUSTSTORE_TYPE"
+const val amqpPersistentKey = "WEBHOOK_AMQP_PERSISTENT"
+const val amqpMessageIdKey = "WEBHOOK_AMQP_MESSAGE_ID"
+const val amqpDeclareExchangeKey = "WEBHOOK_AMQP_DECLARE_EXCHANGE"
+const val amqpPublishModeKey = "WEBHOOK_AMQP_PUBLISH_MODE"
+const val amqpBufferCapacityKey = "WEBHOOK_AMQP_BUFFER_CAPACITY"
+const val amqpInflightCapacityKey = "WEBHOOK_AMQP_INFLIGHT_CAPACITY"
+const val amqpMandatoryKey = "WEBHOOK_AMQP_MANDATORY"
 
 const val syslogProtocol = "WEBHOOK_SYSLOG_PROTOCOL"
 const val syslogHostname = "WEBHOOK_SYSLOG_HOSTNAME"
@@ -24,10 +39,3 @@ const val syslogSeverity = "WEBHOOK_SYSLOG_SEVERITY"
 const val syslogServerHostname = "WEBHOOK_SYSLOG_SERVER_HOSTNAME"
 const val syslogServerPort = "WEBHOOK_SYSLOG_SERVER_PORT"
 const val syslogMessageFormat = "WEBHOOK_SYSLOG_MESSAGE_FORMAT"
-
-private fun getConfig(key: String): String? = System.getenv(key) ?: System.getProperty(key)
-
-fun String.cf() = getConfig(this)
-fun String.bf(compare: String = "true") = this.cf() == compare
-fun String.cff() = getConfig(this)!!
-fun String.cfe(defaultValue: () -> String) = getConfig(this).orEmpty().ifEmpty(defaultValue)

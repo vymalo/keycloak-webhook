@@ -1,9 +1,7 @@
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
-
 plugins {
     kotlin("jvm")
     id("org.openapi.generator") version "7.24.0"
-    id("com.github.johnrengelman.shadow") version "8.1.1"
+    id("com.gradleup.shadow") version "9.4.2"
 }
 
 group = "com.vymalo.keycloak.webhook"
@@ -21,12 +19,15 @@ dependencies {
     implementation("org.keycloak", "keycloak-services", "26.4.0")
 
     implementation("com.google.code.gson", "gson", "2.12.1")
-    
+
     implementation("com.squareup.okhttp3", "okhttp", "4.12.0")
     implementation("com.squareup.okio", "okio-jvm", "3.10.2")
     implementation("org.slf4j", "slf4j-log4j12", "2.0.17")
 
     testImplementation("io.kotlintest", "kotlintest-runner-junit5", "3.4.2")
+    testImplementation(testFixtures(project(":keycloak-webhook-provider-core")))
+    // Kept on the 4.x line so it matches the okhttp version the client uses.
+    testImplementation("com.squareup.okhttp3", "mockwebserver", "4.12.0")
 }
 
 tasks.test {
@@ -51,7 +52,7 @@ openApiGenerate {
     modelPackage.set("$openapiPackageName.model")
 
     httpUserAgent.set("Keycloak/Kotlin")
-    
+
     configOptions.set(
         mutableMapOf(
             "dateLibrary" to "java8",
@@ -80,11 +81,10 @@ tasks {
         dependsOn(openApiGenerate)
     }
 
-    val shadowJar by existing(ShadowJar::class) {
+    shadowJar {
         dependencies {
             include(dependency("com.squareup.okhttp3:okhttp"))
             include(dependency("com.squareup.okio:okio-jvm"))
         }
-        dependsOn(build)
     }
 }

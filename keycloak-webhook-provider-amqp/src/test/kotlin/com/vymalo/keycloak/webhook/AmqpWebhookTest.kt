@@ -16,6 +16,8 @@ import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.wait.strategy.Wait
 import org.testcontainers.utility.DockerImageName
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -140,6 +142,30 @@ class AmqpWebhookTest {
     ) {
         AmqpWebhookFactory().inSession { it.onEvent(Fixtures.loginEvent()) }
         assertEquals(Fixtures.PayloadJson.LOGIN, String(nextMessage().body, Charsets.UTF_8))
+    }
+
+    /**
+     * Keycloak serves logins on many threads at once, all sharing one channel. Starting
+     * them together also covers the burst right after startup: threads that arrive while
+     * the first connection is opened wait for it and publish, rather than dropping.
+     */
+    @Test
+    fun `concurrent sessions all deliver, with publisher confirms`() {
+        withBroker(amqpEnablePublisherConfirm to "true", amqpPublisherConfirmTimeout to "5000") {
+            val factory = AmqpWebhookFactory()
+            val start = CountDownLatch(1)
+            val threads = List(8) {
+                thread {
+                    start.await()
+                    repeat(25) { factory.inSession { it.onEvent(Fixtures.loginEvent()) } }
+                }
+            }
+            start.countDown()
+            threads.forEach { it.join() }
+            factory.close()
+
+            eventually { admin { it.queueDeclarePassive(queue).messageCount }.takeIf { it == 200 } }
+        }
     }
 
     @Test

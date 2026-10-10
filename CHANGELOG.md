@@ -18,6 +18,9 @@
 
 ### Changed
 
+- AMQP with the broker down: requests arriving during a reconnect wait for it instead of starting their own, and for
+  5 seconds after a failed reconnect, events are dropped without trying, so an outage costs logins one reconnect at a
+  time instead of one each
 - Missing or malformed settings are reported in one error that names every problem key, instead of a
   `NullPointerException`
 

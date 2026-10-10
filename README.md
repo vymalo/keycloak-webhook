@@ -325,7 +325,10 @@ reconnecting. Sending happens on the Keycloak request thread, and a delivery pro
 Keycloak, so it cannot fail a login or an admin action:
 
 - **AMQP:** if the connection is down, the plugin reconnects inline (3 attempts, 1 second apart). If all three fail,
-  the event is logged and dropped.
+  the event is logged and dropped. Requests that arrive during a reconnect wait for it rather than starting their
+  own, and for 5 seconds after a failed one, events are dropped without trying, so a dead broker doesn't stack up
+  logins. Publishing is serialized, so with publisher confirms on, a slow broker caps the event rate at one confirm
+  round trip at a time.
 - **HTTP:** every URL is tried up to 3 times, 1 second apart, one URL after another.
 - **Syslog:** UDP is fire-and-forget; the TCP sender reconnects on its own.
 

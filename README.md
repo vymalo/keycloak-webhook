@@ -258,6 +258,12 @@ The following settings are all optional. Leaving them unset keeps the behaviour 
   AMQP heartbeat interval. Defaults to the client's `60`. Lower it if a load balancer or firewall drops idle
   connections sooner.
 
+- **`WEBHOOK_AMQP_CONNECTION_TIMEOUT`**  
+  How long opening a connection to a broker may take, in milliseconds. Defaults to the client's `60000`. Lower it
+  if a broker host can disappear without refusing connections (a dead cluster node, a dropped VM): in sync mode the
+  login that triggers the reconnect waits for it, up to 3 times. A broker that accepts the connection and then hangs
+  is cut off by the client's handshake timeout (10 s) instead.
+
 - **`WEBHOOK_AMQP_SSL_TRUSTSTORE`**, **`WEBHOOK_AMQP_SSL_TRUSTSTORE_PASSWORD`**, **`WEBHOOK_AMQP_SSL_TRUSTSTORE_TYPE`**  
   Path, password and type (default `PKCS12`) of a truststore holding the CA that signed the broker's certificate.
   When set, the broker's certificate and host name are verified. Requires `WEBHOOK_AMQP_SSL="true"`. If a file can't

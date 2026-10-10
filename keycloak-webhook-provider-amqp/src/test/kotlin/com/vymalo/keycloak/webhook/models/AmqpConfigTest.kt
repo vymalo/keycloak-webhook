@@ -31,6 +31,7 @@ class AmqpConfigTest {
         assertEquals("/", config.vHost)
         assertNull(config.truststore)
         assertNull(config.heartbeatSeconds)
+        assertNull(config.connectionTimeoutMs)
         assertFalse(config.persistent)
         assertFalse(config.messageId)
         assertFalse(config.declareExchange)

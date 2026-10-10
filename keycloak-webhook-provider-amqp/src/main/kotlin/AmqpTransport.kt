@@ -32,12 +32,14 @@ import javax.net.ssl.TrustManagerFactory
  */
 class AmqpTransport(private val config: AmqpConfig) : Transport {
 
-    private val connectionFactory = ConnectionFactory().apply {
+    /** Internal so tests can check the settings without a broker; nothing connects until the first event. */
+    internal val connectionFactory = ConnectionFactory().apply {
         username = config.username
         password = config.password
         virtualHost = config.vHost
         isAutomaticRecoveryEnabled = true
         config.heartbeatSeconds?.let { requestedHeartbeat = it }
+        config.connectionTimeoutMs?.let { connectionTimeout = it }
         when {
             config.truststore != null -> {
                 useSslProtocol(sslContext(config.truststore))

@@ -27,6 +27,8 @@ data class AmqpConfig(
     val confirmTimeoutMs: Long,
     /** Null keeps the client's default (60 seconds). */
     val heartbeatSeconds: Int?,
+    /** How long opening the TCP connection may take, in ms. Null keeps the client's default (60 seconds). */
+    val connectionTimeoutMs: Int?,
     /** Marks messages persistent (delivery mode 2), so a durable queue keeps them across broker restarts. */
     val persistent: Boolean,
     /** Gives every message a random UUID `message-id`, so consumers can drop redeliveries. */
@@ -43,7 +45,7 @@ data class AmqpConfig(
     override fun toString() =
         "AmqpConfig(user=$username, addresses=$addresses, vHost=$vHost, ssl=$ssl, truststore=$truststore, " +
             "exchange=$exchange, publisherConfirm=$publisherConfirm, confirmTimeoutMs=$confirmTimeoutMs, " +
-            "heartbeatSeconds=$heartbeatSeconds, persistent=$persistent, messageId=$messageId, " +
+            "heartbeatSeconds=$heartbeatSeconds, connectionTimeoutMs=$connectionTimeoutMs, persistent=$persistent, messageId=$messageId, " +
             "declareExchange=$declareExchange)"
 
     companion object {
@@ -60,6 +62,7 @@ data class AmqpConfig(
                 publisherConfirm = flag(amqpEnablePublisherConfirm),
                 confirmTimeoutMs = long(amqpPublisherConfirmTimeout, default = 5_000),
                 heartbeatSeconds = if (optional(amqpHeartbeatSecondsKey).isNullOrEmpty()) null else int(amqpHeartbeatSecondsKey),
+                connectionTimeoutMs = if (optional(amqpConnectionTimeoutKey).isNullOrEmpty()) null else int(amqpConnectionTimeoutKey),
                 persistent = flag(amqpPersistentKey),
                 messageId = flag(amqpMessageIdKey),
                 declareExchange = flag(amqpDeclareExchangeKey),

@@ -55,4 +55,11 @@ class AmqpWireTest {
         assertEquals(2, persistent.deliveryMode)
         assertEquals(plain.builder().deliveryMode(2).build().toString(), persistent.toString())
     }
+
+    /** Nothing connects until the first event, so the client's settings can be checked without a broker. */
+    @Test
+    fun `the connect timeout keeps the client's 60 s unless set`() {
+        assertEquals(60_000, AmqpTransport(config()).connectionFactory.connectionTimeout)
+        assertEquals(2_000, AmqpTransport(config(amqpConnectionTimeoutKey to "2000")).connectionFactory.connectionTimeout)
+    }
 }

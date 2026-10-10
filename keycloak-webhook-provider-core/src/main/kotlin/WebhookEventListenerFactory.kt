@@ -44,13 +44,33 @@ abstract class WebhookEventListenerFactory(
 
     override fun postInit(factory: KeycloakSessionFactory) {}
 
+    /** The last setup error logged, so a broken config is reported once, not on every login. */
+    @Volatile
+    private var lastSetupError: String? = null
+
     /**
-     * A config error is thrown from here, on purpose: a misconfigured listener should
-     * be loud. Nothing is kept on failure, so the next session tries again.
+     * Never throws. Keycloak creates the listeners enabled in a realm while it handles a
+     * login, so an exception here would fail the login itself. A config error is logged
+     * instead, and that session's events are dropped. Nothing is kept on failure, so the
+     * next session tries again.
      */
-    override fun create(session: KeycloakSession): EventListenerProvider {
-        val wired = wired()
-        return WebhookEventListener(providerId, wired.transport, wired.filter)
+    override fun create(session: KeycloakSession): EventListenerProvider =
+        try {
+            val wired = wired()
+            WebhookEventListener(providerId, wired.transport, wired.filter)
+        } catch (e: Exception) {
+            reportSetupError(e)
+            DroppingListener
+        }
+
+    private fun reportSetupError(e: Exception) {
+        val message = e.message ?: e.javaClass.name
+        if (message == lastSetupError) {
+            LOG.debug("[{}] still not set up, event dropped: {}", providerId, message)
+        } else {
+            lastSetupError = message
+            LOG.error("[{}] could not be set up, its events are dropped until this is fixed", providerId, e)
+        }
     }
 
     /** Double-checked so the common path, every session after the first, is a single volatile read. */
@@ -68,6 +88,13 @@ abstract class WebhookEventListenerFactory(
     private companion object {
         private val LOG = LoggerFactory.getLogger(WebhookEventListenerFactory::class.java)
     }
+}
+
+/** Stands in for a listener whose setup failed: takes Keycloak's events and does nothing with them. */
+internal object DroppingListener : EventListenerProvider {
+    override fun onEvent(event: Event) {}
+    override fun onEvent(event: AdminEvent, includeRepresentation: Boolean) {}
+    override fun close() {}
 }
 
 /**

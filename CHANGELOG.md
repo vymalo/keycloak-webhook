@@ -9,6 +9,8 @@
 - Every Keycloak session opened and closed its own AMQP connection, HTTP client and Syslog sender. Each provider now
   keeps one for the lifetime of the server and closes it on shutdown
 - An unreachable RabbitMQ broker made listener creation throw into Keycloak; the event is now logged and dropped
+- A missing or malformed setting failed every login in a realm with that listener enabled. It is now logged once,
+  and that listener's events are dropped until the config is fixed
 - AMQP publisher confirms from concurrent requests could interfere with each other, and confirm mode was lost after a
   reconnect
 - A connection dropped by the broker could come back through automatic recovery as a second, leaked connection

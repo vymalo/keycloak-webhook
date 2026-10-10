@@ -329,6 +329,10 @@ Keycloak, so it cannot fail a login or an admin action:
 - **HTTP:** every URL is tried up to 3 times, 1 second apart, one URL after another.
 - **Syslog:** UDP is fire-and-forget; the TCP sender reconnects on its own.
 
+A listener that is enabled in a realm but can't be set up, say because a required setting is missing, doesn't fail
+logins either. It logs the problem once, at ERROR, and drops its events until the config is fixed and Keycloak
+restarted.
+
 The core module turns Keycloak events into a `WebhookPayload` with pure functions. Each provider module only
 implements `Transport` (`publish` and `close`) and parses its own settings.
 

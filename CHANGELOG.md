@@ -2,6 +2,10 @@
 
 ## [next]
 
+### Added
+
+- Asynchronous HTTP webhook delivery with a configurable worker pool and bounded in-memory queue capacity.
+
 ## [0.8.3] - 2025-03-04
 
 ### Added

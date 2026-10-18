@@ -196,6 +196,8 @@ spec:
 
 ### HTTP Provider
 
+HTTP webhook deliveries are sent asynchronously.
+
 - **`WEBHOOK_HTTP_BASE_PATH`**  
   Coma-separated list of endpoint URLs where webhook requests are sent.
 
@@ -204,6 +206,14 @@ spec:
 
 - **`WEBHOOK_HTTP_AUTH_PASSWORD` (optional)**  
   Basic auth password.
+
+- **`WEBHOOK_HTTP_THREADS` (optional):** Number of background threads used to send HTTP webhooks
+  asynchronously (default: `4`). Invalid integers use the default; values less than `1` are treated
+  as `1`.
+
+- **`WEBHOOK_HTTP_QUEUE_CAPACITY` (optional):** Maximum number of pending endpoint deliveries in the
+  shared in-memory queue (default: `1000`). Invalid integers use the default; values less than `1`
+  are treated as `1`. Increasing this limit allows more pending work but can increase memory usage.
 
 ### AMQP Provider
 

@@ -5,6 +5,8 @@ const val eventsTakenKey = "WEBHOOK_EVENTS_TAKEN"
 const val httpBaseBathKey = "WEBHOOK_HTTP_BASE_PATH"
 const val httpAuthUsernameKey = "WEBHOOK_HTTP_AUTH_USERNAME"
 const val httpAuthPasswordKey = "WEBHOOK_HTTP_AUTH_PASSWORD"
+const val httpThreadsKey = "WEBHOOK_HTTP_THREADS"
+const val httpQueueCapacityKey = "WEBHOOK_HTTP_QUEUE_CAPACITY"
 
 const val amqpUsernameKey = "WEBHOOK_AMQP_USERNAME"
 const val amqpPasswordKey = "WEBHOOK_AMQP_PASSWORD"
